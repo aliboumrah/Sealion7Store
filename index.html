@@ -268,6 +268,7 @@
 <div class="tabs">
   <div class="tab active" data-tab="shell">⌨ Shell</div>
   <div class="tab" data-tab="apk">🏪 App Store</div>
+  <div class="tab" data-tab="termux">📟 Termux Setup</div>
   <div class="tab" data-tab="linux">🚗 BYD ADB Guide</div>
 </div>
 
@@ -334,7 +335,167 @@
     </div>
   </div>
 
-  <!-- Linux Guide pane -->
+  <!-- Termux Setup pane -->
+  <div id="termux-pane" style="display:none;flex:1;overflow-y:auto;padding:24px;background:var(--bg);flex-direction:column;gap:0;">
+
+    <div class="guide-hero">
+      <div class="guide-hero-icon">📟</div>
+      <div>
+        <h1>Termux Setup on BYD Sealion 7</h1>
+        <p>Install Termux, pull the repo from GitHub, and run the server — all from ADB. Once running, control your car's shell from any browser.</p>
+      </div>
+    </div>
+
+    <div class="guide-steps">
+
+      <!-- Step 1: Enable ADB -->
+      <div class="step-card open" id="ts1">
+        <div class="step-header" onclick="toggleStep('ts1')">
+          <div class="step-num green">1</div>
+          <div class="step-title">Enable ADB on the Sealion 7</div>
+          <span class="step-badge badge-android">On car screen</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>Do these steps on the car touchscreen <strong>while parked</strong>:</p>
+          <div style="display:flex;flex-direction:column;gap:6px;margin:12px 0;">
+            <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--bg);border:1px solid var(--border2);border-radius:7px;">
+              <span style="font-size:11px;font-weight:700;color:var(--green);min-width:20px;">1</span>
+              <span style="font-size:13px;color:var(--text);">Open <strong>Settings</strong></span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--bg);border:1px solid var(--border2);border-radius:7px;">
+              <span style="font-size:11px;font-weight:700;color:var(--green);min-width:20px;">2</span>
+              <span style="font-size:13px;color:var(--text);">Tap <strong>System</strong></span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--bg);border:1px solid var(--border2);border-radius:7px;">
+              <span style="font-size:11px;font-weight:700;color:var(--green);min-width:20px;">3</span>
+              <span style="font-size:13px;color:var(--text);">Tap <strong>Version</strong></span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--surface2);border:1px solid var(--yellow);border-radius:7px;">
+              <span style="font-size:11px;font-weight:700;color:var(--yellow);min-width:20px;">4</span>
+              <span style="font-size:13px;color:var(--yellow);">Press <strong>Restore Factory</strong> 10 times rapidly — hidden menu appears</span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--bg);border:1px solid var(--border2);border-radius:7px;">
+              <span style="font-size:11px;font-weight:700;color:var(--green);min-width:20px;">5</span>
+              <span style="font-size:13px;color:var(--text);">Tap <strong>Rotate screen</strong></span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--surface2);border:1px solid var(--blue);border-radius:7px;">
+              <span style="font-size:11px;font-weight:700;color:var(--blue);min-width:20px;">6</span>
+              <span style="font-size:13px;color:var(--blue);">Tap <strong>Connect USB</strong> — ADB is now enabled</span>
+            </div>
+          </div>
+          <div class="warn-box"><strong>⚠</strong> Do NOT confirm any factory reset. Just tap the button 10 times fast to reveal the menu.</div>
+          <p>Plug USB cable from car to PC, then verify:</p>
+          <div class="cmd-block"><span class="kw">adb</span> devices<button class="cmd-run-btn" onclick="sendCmd('adb devices')">▶ Run</button></div>
+        </div>
+      </div>
+
+      <!-- Step 2: Install Termux via ADB -->
+      <div class="step-card" id="ts2">
+        <div class="step-header" onclick="toggleStep('ts2')">
+          <div class="step-num blue">2</div>
+          <div class="step-title">Install Termux via ADB sideload</div>
+          <span class="step-badge badge-pc">On PC</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <div class="warn-box"><strong>⚠ Do not install Termux from Google Play</strong> — it is outdated and won't receive package updates. Use F-Droid.</div>
+          <p>Download the latest Termux APK from F-Droid:</p>
+          <div class="tip-box"><strong>Download:</strong> <a href="https://f-droid.org/en/packages/com.termux/" style="color:var(--blue);">f-droid.org/en/packages/com.termux</a></div>
+          <p>Then install it via ADB — you can use the <strong>🏪 App Store</strong> tab to sideload, or run from PC:</p>
+          <div class="cmd-block"><span class="kw">adb</span> install -r com.termux.apk<button class="cmd-run-btn" onclick="sendCmd('pm list packages | grep termux')">▶ Check installed</button></div>
+          <p>Verify Termux is installed:</p>
+          <div class="cmd-block"><span class="kw">adb</span> shell pm list packages | grep termux<button class="cmd-run-btn" onclick="sendCmd('pm list packages | grep termux')">▶ Run</button></div>
+        </div>
+      </div>
+
+      <!-- Step 3: Launch Termux -->
+      <div class="step-card" id="ts3">
+        <div class="step-header" onclick="toggleStep('ts3')">
+          <div class="step-num purple">3</div>
+          <div class="step-title">Launch Termux via ADB</div>
+          <span class="step-badge badge-pc">On PC</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>Start Termux on the car screen without touching it:</p>
+          <div class="cmd-block"><span class="kw">adb</span> shell am start -n com.termux/.HomeActivity<button class="cmd-run-btn" onclick="sendCmd('am start -n com.termux/.HomeActivity')">▶ Run</button></div>
+          <p>Termux will open on the car's screen. You can now type commands directly in it.</p>
+        </div>
+      </div>
+
+      <!-- Step 4: Install Node.js & Git -->
+      <div class="step-card" id="ts4">
+        <div class="step-header" onclick="toggleStep('ts4')">
+          <div class="step-num orange">4</div>
+          <div class="step-title">Install Node.js and Git in Termux</div>
+          <span class="step-badge badge-android">In Termux</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>Type these in the Termux terminal on the car screen:</p>
+          <div class="cmd-block"><span class="kw">pkg</span> update && pkg upgrade -y<button class="cmd-run-btn" onclick="sendCmd('pkg update && pkg upgrade -y')">▶ Run via ADB</button></div>
+          <div class="cmd-block"><span class="kw">pkg</span> install nodejs git -y<button class="cmd-run-btn" onclick="sendCmd('pkg install nodejs git -y')">▶ Run via ADB</button></div>
+          <p>Verify:</p>
+          <div class="cmd-block"><span class="kw">node</span> --version && git --version<button class="cmd-run-btn" onclick="sendCmd('node --version && git --version')">▶ Run via ADB</button></div>
+        </div>
+      </div>
+
+      <!-- Step 5: Clone repo & run -->
+      <div class="step-card" id="ts5">
+        <div class="step-header" onclick="toggleStep('ts5')">
+          <div class="step-num yellow">5</div>
+          <div class="step-title">Clone repo and start the server</div>
+          <span class="step-badge badge-android">In Termux</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p><strong>One command</strong> — does everything automatically:</p>
+          <div class="cmd-block"><span class="kw">curl</span> -s https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/start.sh | bash</div>
+          <p>Or manually step by step:</p>
+          <div class="cmd-block"><span class="cmt"># Clone the repo</span>
+<span class="kw">git</span> clone https://github.com/aliboumrah/Sealion7Store.git
+<span class="kw">cd</span> Sealion7Store
+
+<span class="cmt"># Start the server</span>
+<span class="kw">node</span> adb-server.js</div>
+          <div class="tip-box"><strong>💡 Next time</strong> — just run <code>bash start.sh</code> from inside the <code>Sealion7Store</code> folder. It will pull the latest changes and restart the server automatically.</div>
+          <p>The server starts on port <strong>3000</strong>. Open the car's browser and go to:</p>
+          <div class="cmd-block">http://localhost:3000
+<span class="cmt"># or from any device on the same WiFi:</span>
+http://&lt;car-ip&gt;:3000</div>
+          <p>Or use your GitHub Pages URL from any browser:</p>
+          <div class="cmd-block">https://aliboumrah.github.io/Sealion7Store/</div>
+        </div>
+      </div>
+
+      <!-- Step 6: Keep running -->
+      <div class="step-card" id="ts6">
+        <div class="step-header" onclick="toggleStep('ts6')">
+          <div class="step-num green">6</div>
+          <div class="step-title">Keep the server running in background</div>
+          <span class="step-badge badge-android">In Termux</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>To prevent Termux from stopping when you switch apps, use <code>nohup</code>:</p>
+          <div class="cmd-block"><span class="kw">nohup</span> node adb-server.js &amp; disown</div>
+          <p>Or install <code>screen</code> for a persistent session:</p>
+          <div class="cmd-block"><span class="kw">pkg</span> install screen -y
+<span class="kw">screen</span> -S adbserver
+<span class="kw">node</span> adb-server.js
+<span class="cmt"># Press Ctrl+A then D to detach</span>
+<span class="cmt"># Re-attach later with: screen -r adbserver</span></div>
+          <div class="tip-box"><strong>💡 Tip:</strong> In Termux, swipe from the left edge to open sessions panel — you can run multiple terminal sessions side by side.</div>
+          <p>Check the server's IP to access from other devices:</p>
+          <div class="cmd-block"><span class="kw">ip</span> addr show wlan0 | grep inet<button class="cmd-run-btn" onclick="sendCmd('ip addr show wlan0 | grep inet')">▶ Run</button></div>
+        </div>
+      </div>
+
+    </div><!-- /guide-steps -->
+  </div><!-- /termux-pane -->
+
+  <!-- Linux / BYD Guide pane -->
   <div id="linux-pane">
 
     <div class="guide-hero">
@@ -563,7 +724,7 @@ const histList  = document.getElementById("history-list");
 let cmdHistory = [], histIdx = -1;
 
 // ── Tabs ──
-const panes = { shell: document.getElementById("terminal-pane"), apk: document.getElementById("apk-pane"), linux: document.getElementById("linux-pane") };
+const panes = { shell: document.getElementById("terminal-pane"), apk: document.getElementById("apk-pane"), termux: document.getElementById("termux-pane"), linux: document.getElementById("linux-pane") };
 const quickBar = document.getElementById("quick-bar");
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => {
