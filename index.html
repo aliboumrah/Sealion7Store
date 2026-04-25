@@ -35,6 +35,9 @@
   .status-pill-label { color:var(--muted); font-family:var(--mono); white-space:nowrap; }
   .hdr-btn { background:var(--surface2); border:1px solid var(--border); color:var(--muted); padding:4px 10px; border-radius:6px; font-size:12px; cursor:pointer; transition:color .15s,border-color .15s; }
   .hdr-btn:hover { color:var(--text); border-color:var(--blue); }
+  .stop-btn { border-color:var(--red-dim); color:var(--red); }
+  .stop-btn:hover { background:var(--red-dim); border-color:var(--red); color:#ff8080; }
+  .stop-btn:disabled { opacity:.35; cursor:default; }
 
   /* Tabs */
   .tabs { display:flex; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
@@ -271,6 +274,7 @@
     <select id="device-select" style="margin-left:4px;"><option value="">— no device —</option></select>
     <button class="hdr-btn" id="refresh-btn">⟳ Refresh</button>
     <button class="hdr-btn" id="clear-btn">Clear</button>
+    <button class="hdr-btn stop-btn" id="stop-btn" title="Stop the JS server">⏹ Stop</button>
   </div>
 </header>
 
@@ -863,6 +867,30 @@ input.addEventListener("keydown", e => {
 document.querySelectorAll(".qbtn").forEach(b => b.addEventListener("click", () => runCommand(b.dataset.cmd)));
 document.getElementById("refresh-btn").addEventListener("click", fetchDevices);
 document.getElementById("clear-btn").addEventListener("click", () => terminal.innerHTML = "");
+
+// ── Stop server button ──
+document.getElementById("stop-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("stop-btn");
+  if (!serverReady) return;
+  if (!confirm("Stop the JS server running in Termux?")) return;
+  btn.disabled = true;
+  btn.textContent = "⏹ Stopping…";
+  try {
+    await fetch(`${SERVER}/stop`, { method: "POST" });
+  } catch {}
+  // Poll until server is offline
+  let tries = 0;
+  const poll = setInterval(async () => {
+    tries++;
+    const ok = await checkServer();
+    if (!ok || tries > 10) {
+      clearInterval(poll);
+      btn.textContent = "⏹ Stop";
+      btn.disabled = false;
+      fetchDevices();
+    }
+  }, 800);
+});
 
 // ── GitHub APK Store ──
 const GITHUB_RAW = "https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/";

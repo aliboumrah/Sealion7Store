@@ -223,7 +223,8 @@ const server = http.createServer(async (req, res) => {
       result = await runAdb(["install", "-r", localPath], serial);
     }
 
-    try { fs.unlinkSync(localPath); } catch {}
+    // Clean up local APK file
+    try { fs.unlinkSync(localPath); } catch(e) { console.warn("Cleanup failed:", e.message); }
 
     res.writeHead(200);
     res.end(JSON.stringify(result));
@@ -245,6 +246,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── POST /stop — gracefully stop the server from the UI ──
+  if (req.method === "POST" && pathname === "/stop") {
+    res.writeHead(200);
+    res.end(JSON.stringify({ success: true, output: "Server stopping..." }));
+    console.log("\n🛑 Stop requested from UI. Bye!\n");
+    setTimeout(() => process.exit(0), 300);
+    return;
+  }
+
   res.writeHead(404);
   res.end(JSON.stringify({ error: "Not found" }));
 });
@@ -260,21 +270,27 @@ if (IS_TERMUX) {
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`\n🚀 Server on http://localhost:${PORT}`);
   console.log(`   Mode: ${IS_TERMUX ? `Termux → ADB ${ADB_HOST}` : "PC → ADB USB"}`);
-  console.log(`   Press ENTER to stop.\n`);
 });
 
-// ── Stop server on Enter key ──
-// Useful in Termux where Ctrl+C may not work
-process.stdin.resume();
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (key) => {
-  if (key === "\n" || key === "\r" || key === "\r\n") {
-    console.log("\n🛑 Stopping server...");
-    server.close(() => {
-      console.log("✓ Server stopped. Goodbye!\n");
-      process.exit(0);
-    });
-    // Force exit if server doesn't close in 2s
-    setTimeout(() => process.exit(0), 2000);
-  }
-});
+// ── Stop server on Enter or Q ──
+// Uses readline which works reliably in Termux
+const readline = require("readline");
+
+function stopServer() {
+  console.log("\n🛑 Stopping... bye!\n");
+  process.exit(0);
+}
+
+try {
+  const rl = readline.createInterface({ input: process.stdin, terminal: false });
+  rl.on("line", (line) => {
+    const t = line.trim().toLowerCase();
+    if (t === "" || t === "q" || t === "quit" || t === "exit") {
+      stopServer();
+    }
+  });
+  rl.on("close", () => stopServer()); // triggered when terminal closes
+  console.log("   Press ENTER or type Q to stop.\n");
+} catch(e) {
+  console.log("   Kill with: kill " + process.pid + "\n");
+}
