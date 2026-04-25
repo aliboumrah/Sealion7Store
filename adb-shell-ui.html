@@ -267,7 +267,7 @@
 
 <div class="tabs">
   <div class="tab active" data-tab="shell">⌨ Shell</div>
-  <div class="tab" data-tab="apk">📦 Install APK</div>
+  <div class="tab" data-tab="apk">🏪 App Store</div>
   <div class="tab" data-tab="linux">🚗 BYD ADB Guide</div>
 </div>
 
@@ -302,24 +302,24 @@
     </div>
   </div>
 
-  <!-- APK pane -->
+  <!-- APK Store pane -->
   <div id="apk-pane">
-    <div>
-      <div class="apk-section-title">Preloaded APK</div>
-      <div class="preloaded-card">
-        <div class="apk-row">
-          <div class="apk-icon">📦</div>
-          <div class="apk-info">
-            <div class="apk-name">app-manager-7-63.apk</div>
-            <div class="apk-meta">App Manager v7.63 · sideloaded from session</div>
-          </div>
-          <button class="install-btn" id="install-preloaded-btn">Install</button>
-        </div>
-        <div class="install-log" id="preloaded-log"></div>
+    <!-- Store header -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-shrink:0;">
+      <div style="font-size:28px;">🏪</div>
+      <div>
+        <div style="font-size:15px;font-weight:700;color:var(--text);">Sealion 7 App Store</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Apps sourced from <a href="https://github.com/aliboumrah/Sealion7Store" style="color:var(--blue);text-decoration:none;">github.com/aliboumrah/Sealion7Store</a></div>
       </div>
+      <button class="hdr-btn" id="store-refresh-btn" style="margin-left:auto;">⟳ Refresh</button>
     </div>
-    <div>
-      <div class="apk-section-title">Install another APK</div>
+
+    <!-- App cards -->
+    <div id="store-grid" style="display:flex;flex-direction:column;gap:12px;"></div>
+
+    <!-- Drop zone for custom APK -->
+    <div style="margin-top:24px;">
+      <div class="apk-section-title">Install a custom APK</div>
       <div class="drop-zone" id="drop-zone">
         <input type="file" id="apk-file-input" accept=".apk"/>
         <div class="drop-icon">⬆</div>
@@ -329,7 +329,6 @@
       </div>
       <div style="margin-top:10px;display:flex;gap:8px;align-items:center;">
         <button class="install-btn" id="install-custom-btn" disabled>Install selected APK</button>
-        <span style="font-size:11px;color:var(--muted);" id="custom-status"></span>
       </div>
       <div class="install-log" id="custom-log"></div>
     </div>
@@ -554,8 +553,6 @@
 
 <script>
 const SERVER = "http://localhost:3000";
-const PRELOADED_APK_NAME = "1777115696682_app-manager-7-63.apk";
-const PRELOADED_APK_DISPLAY = "app-manager-7-63.apk";
 
 const terminal  = document.getElementById("terminal");
 const input     = document.getElementById("cmd-input");
@@ -628,37 +625,134 @@ document.querySelectorAll(".qbtn").forEach(b => b.addEventListener("click", () =
 document.getElementById("refresh-btn").addEventListener("click", fetchDevices);
 document.getElementById("clear-btn").addEventListener("click", () => terminal.innerHTML = "");
 
-// ── APK install ──
+// ── GitHub APK Store ──
+const GITHUB_RAW = "https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/";
+const STORE_APPS = [
+  {
+    filename: "AppManager_v4.0.5.apk",
+    name: "App Manager",
+    version: "v4.0.5",
+    description: "Full-featured package manager. Allows installing any APK on the Sealion 7 without restrictions.",
+    icon: "🛠",
+    color: "var(--orange-dim)",
+    border: "var(--orange)",
+  },
+  {
+    filename: "GBox-1.5.6.0-150600-16538-telegram.apk",
+    name: "GBox",
+    version: "v1.5.6.0",
+    description: "Google Play services compatibility layer. Enables Google apps and services on DiLink OS.",
+    icon: "📦",
+    color: "var(--blue-dim)",
+    border: "var(--blue)",
+  },
+];
+
 function setLog(el, text, state) { el.textContent = text; el.className = `install-log show ${state}`; }
+
 async function installApkBlob(blob, filename, logEl, btn) {
   const serial = deviceSel.value || null;
-  btn.disabled = true; setLog(logEl, "⟳ Uploading and installing…", "running");
+  btn.disabled = true;
+  setLog(logEl, "⟳ Uploading to server and running adb install…", "running");
   try {
-    const headers = {"X-Filename": filename}; if(serial) headers["X-Device-Serial"] = serial;
-    const res = await fetch(`${SERVER}/install`, {method:"POST", headers, body:blob});
+    const headers = { "X-Filename": filename };
+    if (serial) headers["X-Device-Serial"] = serial;
+    const res = await fetch(`${SERVER}/install`, { method: "POST", headers, body: blob });
     const data = await res.json();
-    setLog(logEl, (data.success && data.output.includes("Success") ? "✓ " : (data.success ? "" : "✗ ")) + (data.output||"Unknown error"), data.success && data.output.includes("Success") ? "success" : data.success ? "success" : "error");
-  } catch(e) { setLog(logEl, `Connection failed\n${e.message}`, "error"); }
-  finally { btn.disabled = false; }
+    const ok = data.success && data.output.includes("Success");
+    setLog(logEl, (ok ? "✓ " : "✗ ") + (data.output || "Unknown error"), ok ? "success" : "error");
+  } catch(e) {
+    setLog(logEl, `Connection failed — is adb-server.js running?\n${e.message}`, "error");
+  } finally {
+    btn.disabled = false;
+  }
 }
-document.getElementById("install-preloaded-btn").addEventListener("click", async () => {
-  const btn = document.getElementById("install-preloaded-btn"), log = document.getElementById("preloaded-log");
-  setLog(log, "⟳ Reading APK file…", "running"); btn.disabled = true;
-  try { const res = await fetch(PRELOADED_APK_NAME); if(!res.ok) throw new Error(`Could not load ${PRELOADED_APK_NAME} (${res.status}). Place it in the same folder as this HTML file.`); const blob = await res.blob(); await installApkBlob(blob, PRELOADED_APK_DISPLAY, log, btn); }
-  catch(e) { setLog(log, "✗ " + e.message, "error"); btn.disabled = false; }
-});
-const dropZone = document.getElementById("drop-zone"), fileInput = document.getElementById("apk-file-input"), dropSelected = document.getElementById("drop-selected"), installCustom = document.getElementById("install-custom-btn"), customLog = document.getElementById("custom-log");
-let selectedFile = null;
+
+async function installFromGitHub(app, logEl, btn) {
+  btn.disabled = true;
+  setLog(logEl, `⟳ Downloading ${app.filename} from GitHub…`, "running");
+  try {
+    const res = await fetch(GITHUB_RAW + encodeURIComponent(app.filename));
+    if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
+    const total = parseInt(res.headers.get("content-length") || "0");
+    // Stream with progress
+    const reader = res.body.getReader();
+    const chunks = [];
+    let loaded = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.length;
+      if (total) setLog(logEl, `⟳ Downloading… ${Math.round(loaded/1024)}KB / ${Math.round(total/1024)}KB`, "running");
+      else setLog(logEl, `⟳ Downloading… ${Math.round(loaded/1024)}KB`, "running");
+    }
+    const blob = new Blob(chunks, { type: "application/vnd.android.package-archive" });
+    setLog(logEl, `⟳ Installing ${app.filename}…`, "running");
+    await installApkBlob(blob, app.filename, logEl, btn);
+  } catch(e) {
+    setLog(logEl, `✗ ${e.message}`, "error");
+    btn.disabled = false;
+  }
+}
+
+function renderStore() {
+  const grid = document.getElementById("store-grid");
+  grid.innerHTML = "";
+  STORE_APPS.forEach((app, i) => {
+    const logId = `store-log-${i}`;
+    const btnId = `store-btn-${i}`;
+    const card = document.createElement("div");
+    card.style.cssText = `background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;`;
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:48px;height:48px;background:${app.color};border:1px solid ${app.border};border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">${app.icon}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:700;color:var(--text);">${app.name} <span style="font-size:11px;font-weight:400;color:var(--muted);">${app.version}</span></div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5;">${app.description}</div>
+        </div>
+        <button id="${btnId}" style="background:${app.color};border:1px solid ${app.border};color:${app.border};font-size:12px;font-weight:600;padding:8px 20px;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0;">Install</button>
+      </div>
+      <div class="install-log" id="${logId}"></div>`;
+    grid.appendChild(card);
+    document.getElementById(btnId).addEventListener("click", () => {
+      installFromGitHub(app, document.getElementById(logId), document.getElementById(btnId));
+    });
+  });
+}
+
+document.getElementById("store-refresh-btn").addEventListener("click", renderStore);
+renderStore();
+
+// ── Custom APK drop zone ──
+const dropZone     = document.getElementById("drop-zone");
+const fileInput    = document.getElementById("apk-file-input");
+const dropSelected = document.getElementById("drop-selected");
+const installCustom= document.getElementById("install-custom-btn");
+const customLog    = document.getElementById("custom-log");
+let selectedFile   = null;
+
 dropZone.addEventListener("click", () => fileInput.click());
-dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+dropZone.addEventListener("dragover",  e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
 dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
 dropZone.addEventListener("drop", e => { e.preventDefault(); dropZone.classList.remove("drag-over"); if(e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); });
 fileInput.addEventListener("change", () => { if(fileInput.files[0]) setFile(fileInput.files[0]); });
+
 function setFile(f) {
-  if(!f.name.toLowerCase().endsWith(".apk")){dropSelected.textContent="⚠ Only .apk files";dropSelected.style.color="var(--red)";installCustom.disabled=true;selectedFile=null;return;}
-  selectedFile=f; dropSelected.textContent=`Selected: ${f.name} (${(f.size/1024/1024).toFixed(1)} MB)`; dropSelected.style.color="var(--blue)"; installCustom.disabled=false; customLog.className="install-log";
+  if (!f.name.toLowerCase().endsWith(".apk")) {
+    dropSelected.textContent = "⚠ Only .apk files are supported";
+    dropSelected.style.color = "var(--red)";
+    installCustom.disabled = true; selectedFile = null; return;
+  }
+  selectedFile = f;
+  dropSelected.textContent = `Selected: ${f.name} (${(f.size/1024/1024).toFixed(1)} MB)`;
+  dropSelected.style.color = "var(--blue)";
+  installCustom.disabled = false;
+  customLog.className = "install-log";
 }
-installCustom.addEventListener("click", async () => { if(selectedFile) await installApkBlob(selectedFile, selectedFile.name, customLog, installCustom); });
+installCustom.addEventListener("click", async () => {
+  if (selectedFile) await installApkBlob(selectedFile, selectedFile.name, customLog, installCustom);
+});
 
 // ── Linux guide ──
 function toggleStep(id) {
