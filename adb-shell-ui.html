@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ADB Web Shell</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1117; --surface: #161b22; --surface2: #1c2330;
+    --border: #30363d; --border2: #21262d; --text: #e6edf3; --muted: #7d8590;
+    --green: #3fb950; --green-dim: #1a4a24;
+    --red: #f85149; --red-dim: #3d1515;
+    --yellow: #d29922; --yellow-dim: #3a2a00;
+    --blue: #58a6ff; --blue-dim: #0d2a4a;
+    --purple: #bc8cff; --purple-dim: #2a1a4a;
+    --orange: #f0883e; --orange-dim: #3a1a00;
+    --mono: "JetBrains Mono","Fira Mono","Cascadia Code",monospace;
+    --sans: "Inter",system-ui,sans-serif;
+  }
+  body { background:var(--bg); color:var(--text); font-family:var(--sans); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+  /* Header */
+  header { display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
+  .logo { display:flex; align-items:center; gap:8px; font-size:15px; font-weight:600; color:var(--green); letter-spacing:-0.02em; }
+  .logo svg { width:20px; height:20px; }
+  .device-bar { display:flex; align-items:center; gap:8px; margin-left:auto; flex-wrap:wrap; }
+  .device-label { font-size:12px; color:var(--muted); }
+  #device-select { background:var(--surface2); border:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:12px; padding:4px 8px; border-radius:6px; cursor:pointer; outline:none; min-width:160px; }
+  #device-select:focus { border-color:var(--blue); }
+  .status-dot { width:8px; height:8px; border-radius:50%; background:var(--red); flex-shrink:0; transition:background 0.3s; }
+  .status-dot.online { background:var(--green); }
+  .hdr-btn { background:var(--surface2); border:1px solid var(--border); color:var(--muted); padding:4px 10px; border-radius:6px; font-size:12px; cursor:pointer; transition:color .15s,border-color .15s; }
+  .hdr-btn:hover { color:var(--text); border-color:var(--blue); }
+
+  /* Tabs */
+  .tabs { display:flex; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
+  .tab { padding:8px 18px; font-size:12px; font-weight:500; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; transition:color .15s,border-color .15s; user-select:none; white-space:nowrap; }
+  .tab:hover { color:var(--text); }
+  .tab.active { color:var(--text); border-bottom-color:var(--blue); }
+
+  /* Quick bar */
+  .quick-bar { display:flex; gap:6px; padding:8px 16px; background:var(--surface); border-bottom:1px solid var(--border2); flex-shrink:0; flex-wrap:wrap; }
+  .quick-label { font-size:11px; color:var(--muted); align-self:center; margin-right:4px; }
+  .qbtn { background:var(--surface2); border:1px solid var(--border); color:var(--blue); padding:3px 10px; border-radius:20px; font-size:11px; font-family:var(--mono); cursor:pointer; transition:background .15s,border-color .15s; white-space:nowrap; }
+  .qbtn:hover { background:var(--blue-dim); border-color:var(--blue); color:#a5d3ff; }
+
+  /* Main */
+  .main { display:flex; flex:1; overflow:hidden; }
+
+  /* Terminal */
+  #terminal-pane { position:relative; display:flex; flex-direction:column; flex:1; overflow:hidden; }
+  #terminal { flex:1; overflow-y:auto; padding:12px 16px 80px; font-family:var(--mono); font-size:13px; line-height:1.65; background:var(--bg); scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  .entry { margin-bottom:12px; }
+  .entry-cmd { display:flex; align-items:flex-start; gap:8px; margin-bottom:2px; }
+  .prompt { color:var(--green); user-select:none; flex-shrink:0; font-weight:600; }
+  .cmd-text { color:var(--text); word-break:break-all; }
+  .entry-meta { font-size:10px; color:var(--muted); margin-bottom:4px; padding-left:28px; }
+  .entry-output { padding-left:28px; white-space:pre-wrap; word-break:break-all; }
+  .entry-output.success { color:#adbac7; }
+  .entry-output.error { color:var(--red); }
+  .entry-output.loading { color:var(--muted); font-style:italic; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .spinner { display:inline-block; animation:spin 0.8s linear infinite; }
+  .welcome { color:var(--muted); font-size:12px; padding:8px 0 16px; line-height:1.8; }
+  .welcome span { color:var(--green); }
+  .welcome code { color:var(--blue); }
+
+  /* Input bar */
+  .input-bar { position:absolute; bottom:0; left:0; right:0; background:var(--surface); border-top:1px solid var(--border); padding:10px 16px; display:flex; gap:8px; align-items:center; }
+  .input-prompt { font-family:var(--mono); font-size:14px; color:var(--green); font-weight:600; flex-shrink:0; }
+  #cmd-input { flex:1; background:transparent; border:none; outline:none; color:var(--text); font-family:var(--mono); font-size:13px; caret-color:var(--green); }
+  #cmd-input::placeholder { color:var(--muted); }
+  #run-btn { background:var(--green-dim); border:1px solid var(--green); color:var(--green); font-family:var(--mono); font-size:12px; font-weight:600; padding:6px 16px; border-radius:6px; cursor:pointer; flex-shrink:0; }
+  #run-btn:hover { background:#25613a; }
+  #run-btn:disabled { opacity:.4; cursor:default; }
+
+  /* APK pane */
+  #apk-pane { display:none; flex:1; overflow-y:auto; padding:20px; background:var(--bg); flex-direction:column; gap:16px; }
+  .apk-section-title { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; margin-bottom:10px; }
+  .preloaded-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .apk-row { display:flex; align-items:center; gap:12px; }
+  .apk-icon { width:42px; height:42px; background:var(--purple-dim); border:1px solid #4a2a8a; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+  .apk-info { flex:1; min-width:0; }
+  .apk-name { font-size:13px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .apk-meta { font-size:11px; color:var(--muted); margin-top:2px; }
+  .install-btn { background:var(--purple-dim); border:1px solid var(--purple); color:var(--purple); font-size:12px; font-weight:600; padding:7px 18px; border-radius:6px; cursor:pointer; transition:background .15s; white-space:nowrap; flex-shrink:0; }
+  .install-btn:hover { background:#3d2070; }
+  .install-btn:disabled { opacity:.4; cursor:default; }
+  .install-log { margin-top:12px; font-family:var(--mono); font-size:12px; background:var(--bg); border:1px solid var(--border2); border-radius:6px; padding:10px 12px; min-height:36px; white-space:pre-wrap; word-break:break-all; display:none; }
+  .install-log.show { display:block; }
+  .install-log.success { color:var(--green); border-color:var(--green-dim); }
+  .install-log.error { color:var(--red); border-color:var(--red-dim); }
+  .install-log.running { color:var(--muted); }
+  .drop-zone { border:1.5px dashed var(--border); border-radius:10px; padding:28px 20px; text-align:center; cursor:pointer; transition:border-color .15s,background .15s; background:var(--surface); }
+  .drop-zone:hover,.drop-zone.drag-over { border-color:var(--blue); background:var(--blue-dim); }
+  .drop-zone input { display:none; }
+  .drop-icon { font-size:28px; margin-bottom:8px; }
+  .drop-title { font-size:13px; color:var(--text); margin-bottom:4px; }
+  .drop-sub { font-size:11px; color:var(--muted); }
+  .drop-selected { font-size:12px; font-family:var(--mono); color:var(--blue); margin-top:8px; }
+
+  /* ── Linux Guide pane ── */
+  #linux-pane { display:none; flex:1; overflow-y:auto; padding:24px; background:var(--bg); flex-direction:column; gap:0; }
+
+  .guide-hero {
+    background: linear-gradient(135deg, #0d2a1a 0%, #0a1628 100%);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .guide-hero-icon { font-size: 40px; flex-shrink: 0; }
+  .guide-hero h1 { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .guide-hero p { font-size: 12px; color: var(--muted); line-height: 1.6; }
+
+  .guide-steps { display: flex; flex-direction: column; gap: 16px; }
+
+  .step-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: background .15s;
+  }
+  .step-header:hover { background: var(--surface2); }
+
+  .step-num {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .step-num.green  { background: var(--green-dim);  color: var(--green);  border: 1px solid var(--green); }
+  .step-num.blue   { background: var(--blue-dim);   color: var(--blue);   border: 1px solid var(--blue); }
+  .step-num.purple { background: var(--purple-dim); color: var(--purple); border: 1px solid var(--purple); }
+  .step-num.orange { background: var(--orange-dim); color: var(--orange); border: 1px solid var(--orange); }
+  .step-num.yellow { background: var(--yellow-dim); color: var(--yellow); border: 1px solid var(--yellow); }
+
+  .step-title { font-size: 13px; font-weight: 600; color: var(--text); flex: 1; }
+  .step-badge { font-size: 10px; padding: 2px 8px; border-radius: 20px; font-weight: 600; white-space: nowrap; }
+  .badge-android { background: #1a3a10; color: #5cb85c; border: 1px solid #2a5a1a; }
+  .badge-pc      { background: var(--blue-dim); color: var(--blue); border: 1px solid #1a3a6a; }
+  .badge-app     { background: var(--purple-dim); color: var(--purple); border: 1px solid #3a1a7a; }
+  .step-chevron { color: var(--muted); font-size: 12px; transition: transform .2s; }
+  .step-card.open .step-chevron { transform: rotate(90deg); }
+
+  .step-body { display: none; padding: 0 16px 16px; border-top: 1px solid var(--border2); }
+  .step-card.open .step-body { display: block; }
+
+  .step-body p { font-size: 13px; color: var(--muted); line-height: 1.7; margin: 12px 0 8px; }
+  .step-body p strong { color: var(--text); }
+  .step-body ul { padding-left: 18px; }
+  .step-body li { font-size: 13px; color: var(--muted); line-height: 1.8; }
+  .step-body li strong { color: var(--text); }
+
+  .cmd-block {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 8px 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: #adbac7;
+    white-space: pre;
+    overflow-x: auto;
+    position: relative;
+  }
+  .cmd-block .cmt { color: var(--muted); }
+  .cmd-block .kw  { color: var(--green); }
+  .cmd-block .str { color: var(--yellow); }
+  .cmd-block .cmd-run-btn {
+    position: absolute; top: 6px; right: 8px;
+    background: var(--green-dim); border: 1px solid var(--green);
+    color: var(--green); font-size: 10px; padding: 2px 8px;
+    border-radius: 4px; cursor: pointer; font-family: var(--sans);
+  }
+  .cmd-block .cmd-run-btn:hover { background: #25613a; }
+
+  .tip-box {
+    background: var(--blue-dim);
+    border: 1px solid #1a3a6a;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 10px 0;
+    font-size: 12px;
+    color: #8dc4ff;
+    line-height: 1.6;
+  }
+  .tip-box strong { color: var(--blue); }
+
+  .warn-box {
+    background: var(--yellow-dim);
+    border: 1px solid #5a3a00;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 10px 0;
+    font-size: 12px;
+    color: #e0b060;
+    line-height: 1.6;
+  }
+  .warn-box strong { color: var(--yellow); }
+
+  .distro-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 8px;
+    margin: 10px 0;
+  }
+  .distro-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .distro-card:hover { border-color: var(--blue); background: var(--blue-dim); }
+  .distro-card.selected { border-color: var(--green); background: var(--green-dim); }
+  .distro-icon { font-size: 22px; margin-bottom: 4px; }
+  .distro-name { font-size: 11px; font-weight: 600; color: var(--text); }
+  .distro-note { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  /* History panel */
+  .history-panel { width:220px; border-left:1px solid var(--border2); display:flex; flex-direction:column; overflow:hidden; background:var(--surface); flex-shrink:0; }
+  .panel-title { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; padding:10px 12px 6px; border-bottom:1px solid var(--border2); }
+  #history-list { overflow-y:auto; flex:1; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  .hist-item { font-family:var(--mono); font-size:11px; color:var(--muted); padding:7px 12px; cursor:pointer; border-bottom:1px solid var(--border2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:background .1s,color .1s; }
+  .hist-item:hover { background:var(--surface2); color:var(--blue); }
+  @media(max-width:640px){ .history-panel{display:none;} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="2" y="3" width="20" height="14" rx="2"/>
+      <path d="M8 21h8M12 17v4"/>
+      <path d="M6 8l4 3-4 3"/><path d="M12 14h4"/>
+    </svg>
+    ADB Web Shell
+  </div>
+  <div class="device-bar">
+    <span class="status-dot" id="status-dot"></span>
+    <span class="device-label">Device:</span>
+    <select id="device-select"><option value="">— no device —</option></select>
+    <button class="hdr-btn" id="refresh-btn">⟳ Refresh</button>
+    <button class="hdr-btn" id="clear-btn">Clear</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="shell">⌨ Shell</div>
+  <div class="tab" data-tab="apk">📦 Install APK</div>
+  <div class="tab" data-tab="linux">🚗 BYD ADB Guide</div>
+</div>
+
+<div class="quick-bar" id="quick-bar">
+  <span class="quick-label">Quick:</span>
+  <button class="qbtn" data-cmd="getprop ro.product.model">model</button>
+  <button class="qbtn" data-cmd="getprop ro.build.version.release">android ver</button>
+  <button class="qbtn" data-cmd="dumpsys battery">battery</button>
+  <button class="qbtn" data-cmd="ps -e">processes</button>
+  <button class="qbtn" data-cmd="df -h">disk usage</button>
+  <button class="qbtn" data-cmd="ip addr">network</button>
+  <button class="qbtn" data-cmd="logcat -d -t 50">logcat (50)</button>
+  <button class="qbtn" data-cmd="pm list packages -3">3rd-party apps</button>
+  <button class="qbtn" data-cmd="wm size">screen size</button>
+</div>
+
+<div class="main">
+
+  <!-- Shell pane -->
+  <div id="terminal-pane" style="position:relative;display:flex;flex-direction:column;flex:1;overflow:hidden;">
+    <div id="terminal">
+      <div class="welcome">
+        <span>ADB Web Shell</span> — server at <code>localhost:3000</code><br/>
+        Type any <code>adb shell</code> command and press Enter.
+      </div>
+    </div>
+    <div class="input-bar">
+      <span class="input-prompt">adb shell $</span>
+      <input id="cmd-input" type="text" placeholder="e.g. getprop ro.product.model"
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <button id="run-btn">Run ↵</button>
+    </div>
+  </div>
+
+  <!-- APK pane -->
+  <div id="apk-pane">
+    <div>
+      <div class="apk-section-title">Preloaded APK</div>
+      <div class="preloaded-card">
+        <div class="apk-row">
+          <div class="apk-icon">📦</div>
+          <div class="apk-info">
+            <div class="apk-name">app-manager-7-63.apk</div>
+            <div class="apk-meta">App Manager v7.63 · sideloaded from session</div>
+          </div>
+          <button class="install-btn" id="install-preloaded-btn">Install</button>
+        </div>
+        <div class="install-log" id="preloaded-log"></div>
+      </div>
+    </div>
+    <div>
+      <div class="apk-section-title">Install another APK</div>
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="apk-file-input" accept=".apk"/>
+        <div class="drop-icon">⬆</div>
+        <div class="drop-title">Drop an APK here or click to browse</div>
+        <div class="drop-sub">Sends to device via <code>adb install -r</code></div>
+        <div class="drop-selected" id="drop-selected"></div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;">
+        <button class="install-btn" id="install-custom-btn" disabled>Install selected APK</button>
+        <span style="font-size:11px;color:var(--muted);" id="custom-status"></span>
+      </div>
+      <div class="install-log" id="custom-log"></div>
+    </div>
+  </div>
+
+  <!-- Linux Guide pane -->
+  <div id="linux-pane">
+
+    <div class="guide-hero">
+      <div class="guide-hero-icon">🚗</div>
+      <div>
+        <h1>BYD Sealion 7 — Enable ADB & Install Linux</h1>
+        <p>The Sealion 7 runs a locked-down DiLink Android infotainment system. Follow these exact steps to unlock ADB and sideload apps. Do this while <strong>parked</strong>.</p>
+      </div>
+    </div>
+
+    <div class="guide-steps">
+
+      <!-- Step 1 — BYD specific unlock -->
+      <div class="step-card open" id="step1">
+        <div class="step-header" onclick="toggleStep('step1')">
+          <div class="step-num green">1</div>
+          <div class="step-title">Enable ADB on the BYD Sealion 7</div>
+          <span class="step-badge badge-android">On the car screen</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>Follow these steps exactly on the car's <strong>touchscreen</strong>:</p>
+
+          <div style="display:flex;flex-direction:column;gap:8px;margin:14px 0;">
+
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;">
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--green-dim);border:1px solid var(--green);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--green);flex-shrink:0;">1</div>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--text);">Open Settings</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px;">Tap the gear icon on the home screen or swipe down from the top bar.</div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;">
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--green-dim);border:1px solid var(--green);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--green);flex-shrink:0;">2</div>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--text);">Go to System</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px;">Scroll down and tap <strong style="color:var(--text)">System</strong> in the settings list.</div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;">
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--green-dim);border:1px solid var(--green);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--green);flex-shrink:0;">3</div>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--text);">Tap Version</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px;">Inside System, tap <strong style="color:var(--text)">Version</strong> to open the version info screen.</div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:var(--surface2);border:1px solid var(--yellow);border-radius:8px;">
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--yellow-dim);border:1px solid var(--yellow);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--yellow);flex-shrink:0;">4</div>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--yellow);">Press "Restore Factory" 10 times</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px;">Find the <strong style="color:var(--text)">Restore Factory</strong> button and tap it <strong style="color:var(--yellow)">10 times rapidly</strong>. A hidden developer menu will appear. Do NOT confirm any factory reset prompt.</div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;">
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--green-dim);border:1px solid var(--green);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--green);flex-shrink:0;">5</div>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--text);">Rotate the screen</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px;">The hidden menu may require rotating the display orientation to reveal all options. Tap the rotate button if present.</div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:var(--surface2);border:1px solid var(--blue);border-radius:8px;">
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--blue-dim);border:1px solid var(--blue);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--blue);flex-shrink:0;">6</div>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--blue);">Tap "Connect USB"</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px;">In the hidden developer menu, tap <strong style="color:var(--text)">Connect USB</strong>. ADB is now enabled. Plug a USB cable from the car's data port to your laptop.</div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="warn-box"><strong>⚠ Do not tap "Restore Factory" and confirm</strong> — just tap it 10 times fast to trigger the hidden menu. Do not confirm any reset dialog.</div>
+          <div class="tip-box"><strong>💡 Tip:</strong> Use the car's USB-A data port (usually in the center console), not the USB-C charging port. If the PC doesn't detect the device, try a different USB cable or laptop port.</div>
+
+          <p>Then verify the connection from your PC:</p>
+          <div class="cmd-block"><span class="kw">adb</span> devices<button class="cmd-run-btn" onclick="sendCmd('adb devices')">▶ Run</button></div>
+          <p>You should see the Sealion 7 listed as an ADB device. No RSA prompt will appear on the car screen — it connects silently.</p>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step-card" id="step2">
+        <div class="step-header" onclick="toggleStep('step2')">
+          <div class="step-num blue">2</div>
+          <div class="step-title">Choose your Linux method</div>
+          <span class="step-badge badge-app">Choose one</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>Pick the method that fits your needs. Click a card to highlight it.</p>
+          <div class="distro-grid">
+            <div class="distro-card selected" onclick="selectDistro(this,'termux')">
+              <div class="distro-icon">📟</div>
+              <div class="distro-name">Termux</div>
+              <div class="distro-note">No root · Recommended</div>
+            </div>
+            <div class="distro-card" onclick="selectDistro(this,'userland')">
+              <div class="distro-icon">🌐</div>
+              <div class="distro-name">UserLAnd</div>
+              <div class="distro-note">No root · GUI support</div>
+            </div>
+            <div class="distro-card" onclick="selectDistro(this,'anlinux')">
+              <div class="distro-icon">🐉</div>
+              <div class="distro-name">AnLinux</div>
+              <div class="distro-note">Needs Termux</div>
+            </div>
+            <div class="distro-card" onclick="selectDistro(this,'chroot')">
+              <div class="distro-icon">🔓</div>
+              <div class="distro-name">Chroot</div>
+              <div class="distro-note">Root required</div>
+            </div>
+          </div>
+          <div id="method-detail" style="margin-top:12px;"></div>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step-card" id="step3">
+        <div class="step-header" onclick="toggleStep('step3')">
+          <div class="step-num purple">3</div>
+          <div class="step-title">Install Termux via ADB (sideload)</div>
+          <span class="step-badge badge-pc">On PC</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>Google Play's Termux is outdated. Install it from <strong>F-Droid</strong> via ADB sideload:</p>
+          <div class="warn-box"><strong>⚠ Warning:</strong> Do not install Termux from Google Play — it is no longer maintained there and will not receive package updates.</div>
+          <p>Download the latest Termux APK from F-Droid, then install it:</p>
+          <div class="cmd-block"><span class="cmt"># Install Termux APK (replace filename with downloaded version)</span>
+<span class="kw">adb</span> install -r com.termux_<span class="str">118</span>.apk</div>
+          <p>Or use this shell to run the install command — go to the <strong>Install APK</strong> tab to sideload the APK file directly from your browser.</p>
+          <div class="tip-box"><strong>F-Droid link:</strong> https://f-droid.org/en/packages/com.termux/</div>
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="step-card" id="step4">
+        <div class="step-header" onclick="toggleStep('step4')">
+          <div class="step-num orange">4</div>
+          <div class="step-title">Set up Linux inside Termux</div>
+          <span class="step-badge badge-android">On Android</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>Open <strong>Termux</strong> on your device and run these commands one by one:</p>
+          <p><strong>Update packages:</strong></p>
+          <div class="cmd-block"><span class="kw">pkg</span> update && <span class="kw">pkg</span> upgrade -y<button class="cmd-run-btn" onclick="sendCmd('pkg update && pkg upgrade -y')">▶ Run via ADB</button></div>
+          <p><strong>Install proot-distro</strong> (Linux distro manager for Termux):</p>
+          <div class="cmd-block"><span class="kw">pkg</span> install proot-distro -y<button class="cmd-run-btn" onclick="sendCmd('pkg install proot-distro -y')">▶ Run via ADB</button></div>
+          <p><strong>Install a Linux distro</strong> (choose one):</p>
+          <div class="cmd-block"><span class="cmt"># Ubuntu (recommended for beginners)</span>
+<span class="kw">proot-distro</span> install ubuntu
+
+<span class="cmt"># OR Debian</span>
+<span class="kw">proot-distro</span> install debian
+
+<span class="cmt"># OR Alpine (very lightweight)</span>
+<span class="kw">proot-distro</span> install alpine
+
+<span class="cmt"># OR Arch Linux</span>
+<span class="kw">proot-distro</span> install archlinux</div>
+          <p><strong>Enter (boot into) the distro:</strong></p>
+          <div class="cmd-block"><span class="kw">proot-distro</span> login ubuntu<button class="cmd-run-btn" onclick="sendCmd('proot-distro login ubuntu')">▶ Run via ADB</button></div>
+          <div class="tip-box"><strong>Tip:</strong> You are now inside a full Ubuntu shell. You can run <code>apt install</code>, create users, install servers, Python, Node.js, etc.</div>
+        </div>
+      </div>
+
+      <!-- Step 5 -->
+      <div class="step-card" id="step5">
+        <div class="step-header" onclick="toggleStep('step5')">
+          <div class="step-num yellow">5</div>
+          <div class="step-title">Connect to Linux over ADB shell (remote access)</div>
+          <span class="step-badge badge-pc">On PC</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>You can drive Termux/Linux entirely from this ADB shell without touching the device screen.</p>
+          <p><strong>Launch Termux in background via ADB:</strong></p>
+          <div class="cmd-block"><span class="kw">adb</span> shell am start -n com.termux/.HomeActivity<button class="cmd-run-btn" onclick="sendCmd('am start -n com.termux/.HomeActivity')">▶ Run</button></div>
+          <p><strong>Run a command directly inside Termux via ADB:</strong></p>
+          <div class="cmd-block"><span class="kw">adb</span> shell run-as com.termux /data/data/com.termux/files/usr/bin/bash -c <span class="str">"your-command"</span></div>
+          <p><strong>Set up SSH inside Termux</strong> so you can SSH in from your PC:</p>
+          <div class="cmd-block"><span class="cmt"># Inside Termux on device:</span>
+<span class="kw">pkg</span> install openssh -y
+<span class="kw">sshd</span>                        <span class="cmt"># starts SSH on port 8022</span>
+<span class="kw">passwd</span>                       <span class="cmt"># set a password</span>
+
+<span class="cmt"># On your PC:</span>
+<span class="kw">adb</span> forward tcp:8022 tcp:8022
+<span class="kw">ssh</span> -p 8022 localhost</div>
+          <div class="tip-box"><strong>Tip:</strong> After <code>adb forward</code>, you get a full SSH session into Linux on your Android device from your PC terminal.</div>
+          <p><strong>Optional — enable GUI desktop via VNC:</strong></p>
+          <div class="cmd-block"><span class="cmt"># Inside proot-distro Ubuntu:</span>
+<span class="kw">apt</span> install xfce4 tigervnc-standalone-server -y
+<span class="kw">vncserver</span> -localhost no :1
+
+<span class="cmt"># Forward VNC port from PC:</span>
+<span class="kw">adb</span> forward tcp:5901 tcp:5901
+<span class="cmt"># Connect VNC viewer to localhost:5901</span></div>
+        </div>
+      </div>
+
+    </div><!-- /guide-steps -->
+  </div><!-- /linux-pane -->
+
+  <!-- History sidebar -->
+  <div class="history-panel">
+    <div class="panel-title">History</div>
+    <div id="history-list"></div>
+  </div>
+</div>
+
+<script>
+const SERVER = "http://localhost:3000";
+const PRELOADED_APK_NAME = "1777115696682_app-manager-7-63.apk";
+const PRELOADED_APK_DISPLAY = "app-manager-7-63.apk";
+
+const terminal  = document.getElementById("terminal");
+const input     = document.getElementById("cmd-input");
+const runBtn    = document.getElementById("run-btn");
+const deviceSel = document.getElementById("device-select");
+const statusDot = document.getElementById("status-dot");
+const histList  = document.getElementById("history-list");
+let cmdHistory = [], histIdx = -1;
+
+// ── Tabs ──
+const panes = { shell: document.getElementById("terminal-pane"), apk: document.getElementById("apk-pane"), linux: document.getElementById("linux-pane") };
+const quickBar = document.getElementById("quick-bar");
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    const which = tab.dataset.tab;
+    Object.entries(panes).forEach(([k, el]) => el.style.display = k === which ? "flex" : "none");
+    quickBar.style.display = which === "shell" ? "flex" : "none";
+    if (which === "shell") input.focus();
+  });
+});
+
+// ── Devices ──
+async function fetchDevices() {
+  try {
+    const res = await fetch(`${SERVER}/devices`);
+    const data = await res.json();
+    deviceSel.innerHTML = "";
+    if (!data.devices.length) { deviceSel.innerHTML = `<option value="">— no device —</option>`; statusDot.classList.remove("online"); return; }
+    data.devices.forEach(d => { const o = document.createElement("option"); o.value = d.serial; o.textContent = `${d.model} (${d.serial})`; deviceSel.appendChild(o); });
+    statusDot.classList.add("online");
+  } catch { deviceSel.innerHTML = `<option value="">— server offline —</option>`; statusDot.classList.remove("online"); }
+}
+
+// ── Shell ──
+async function runCommand(cmd) {
+  if (!cmd.trim()) return;
+  const serial = deviceSel.value || null;
+  if (cmdHistory[0] !== cmd) { cmdHistory.unshift(cmd); if (cmdHistory.length > 80) cmdHistory.pop(); renderHistory(); }
+  histIdx = -1;
+  const entry = document.createElement("div"); entry.className = "entry";
+  const ts = new Date().toLocaleTimeString();
+  entry.innerHTML = `<div class="entry-cmd"><span class="prompt">$</span><span class="cmd-text">${esc(cmd)}</span></div><div class="entry-meta">${ts} · ${esc(serial||"default")}</div><div class="entry-output loading"><span class="spinner">⟳</span> running…</div>`;
+  terminal.appendChild(entry); scrollDown();
+  const outEl = entry.querySelector(".entry-output");
+  try {
+    runBtn.disabled = true;
+    const res = await fetch(`${SERVER}/shell`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({command:cmd, serial}) });
+    const data = await res.json();
+    outEl.className = `entry-output ${data.success?"success":"error"}`;
+    outEl.textContent = data.output || "(no output)";
+  } catch(e) { outEl.className = "entry-output error"; outEl.textContent = `Connection failed — is the server running?\n${e.message}`; }
+  finally { runBtn.disabled = false; input.focus(); scrollDown(); }
+}
+
+function scrollDown() { terminal.scrollTop = terminal.scrollHeight; }
+function esc(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function renderHistory() {
+  histList.innerHTML = cmdHistory.map(c => `<div class="hist-item" title="${esc(c)}">${esc(c)}</div>`).join("");
+  histList.querySelectorAll(".hist-item").forEach((el,i) => el.addEventListener("click", () => { input.value = cmdHistory[i]; input.focus(); }));
+}
+runBtn.addEventListener("click", () => { const c = input.value.trim(); if(c){input.value="";runCommand(c);} });
+input.addEventListener("keydown", e => {
+  if(e.key==="Enter"){const c=input.value.trim();if(c){input.value="";runCommand(c);}}
+  else if(e.key==="ArrowUp"){e.preventDefault();if(histIdx<cmdHistory.length-1)input.value=cmdHistory[++histIdx];}
+  else if(e.key==="ArrowDown"){e.preventDefault();histIdx>0?input.value=cmdHistory[--histIdx]:(histIdx=-1,input.value="");}
+});
+document.querySelectorAll(".qbtn").forEach(b => b.addEventListener("click", () => runCommand(b.dataset.cmd)));
+document.getElementById("refresh-btn").addEventListener("click", fetchDevices);
+document.getElementById("clear-btn").addEventListener("click", () => terminal.innerHTML = "");
+
+// ── APK install ──
+function setLog(el, text, state) { el.textContent = text; el.className = `install-log show ${state}`; }
+async function installApkBlob(blob, filename, logEl, btn) {
+  const serial = deviceSel.value || null;
+  btn.disabled = true; setLog(logEl, "⟳ Uploading and installing…", "running");
+  try {
+    const headers = {"X-Filename": filename}; if(serial) headers["X-Device-Serial"] = serial;
+    const res = await fetch(`${SERVER}/install`, {method:"POST", headers, body:blob});
+    const data = await res.json();
+    setLog(logEl, (data.success && data.output.includes("Success") ? "✓ " : (data.success ? "" : "✗ ")) + (data.output||"Unknown error"), data.success && data.output.includes("Success") ? "success" : data.success ? "success" : "error");
+  } catch(e) { setLog(logEl, `Connection failed\n${e.message}`, "error"); }
+  finally { btn.disabled = false; }
+}
+document.getElementById("install-preloaded-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("install-preloaded-btn"), log = document.getElementById("preloaded-log");
+  setLog(log, "⟳ Reading APK file…", "running"); btn.disabled = true;
+  try { const res = await fetch(PRELOADED_APK_NAME); if(!res.ok) throw new Error(`Could not load ${PRELOADED_APK_NAME} (${res.status}). Place it in the same folder as this HTML file.`); const blob = await res.blob(); await installApkBlob(blob, PRELOADED_APK_DISPLAY, log, btn); }
+  catch(e) { setLog(log, "✗ " + e.message, "error"); btn.disabled = false; }
+});
+const dropZone = document.getElementById("drop-zone"), fileInput = document.getElementById("apk-file-input"), dropSelected = document.getElementById("drop-selected"), installCustom = document.getElementById("install-custom-btn"), customLog = document.getElementById("custom-log");
+let selectedFile = null;
+dropZone.addEventListener("click", () => fileInput.click());
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+dropZone.addEventListener("drop", e => { e.preventDefault(); dropZone.classList.remove("drag-over"); if(e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener("change", () => { if(fileInput.files[0]) setFile(fileInput.files[0]); });
+function setFile(f) {
+  if(!f.name.toLowerCase().endsWith(".apk")){dropSelected.textContent="⚠ Only .apk files";dropSelected.style.color="var(--red)";installCustom.disabled=true;selectedFile=null;return;}
+  selectedFile=f; dropSelected.textContent=`Selected: ${f.name} (${(f.size/1024/1024).toFixed(1)} MB)`; dropSelected.style.color="var(--blue)"; installCustom.disabled=false; customLog.className="install-log";
+}
+installCustom.addEventListener("click", async () => { if(selectedFile) await installApkBlob(selectedFile, selectedFile.name, customLog, installCustom); });
+
+// ── Linux guide ──
+function toggleStep(id) {
+  const card = document.getElementById(id); card.classList.toggle("open");
+}
+function sendCmd(cmd) {
+  // Switch to shell tab and run command
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelector('[data-tab="shell"]').classList.add("active");
+  Object.entries(panes).forEach(([k,el]) => el.style.display = k==="shell"?"flex":"none");
+  quickBar.style.display = "flex";
+  runCommand(cmd);
+}
+
+const methodDetails = {
+  termux:   `<div class="tip-box"><strong>Termux</strong> — Most popular method. Runs a Linux environment in Android's userspace. No root needed. Install packages via <code>pkg install</code>. Use <code>proot-distro</code> to run Ubuntu, Debian, Arch, Alpine inside Termux.</div>`,
+  userland: `<div class="tip-box"><strong>UserLAnd</strong> — App that creates a Linux container. Supports Ubuntu, Debian, Kali. Can run a graphical desktop via VNC. No root required. Download from F-Droid or Google Play.</div>`,
+  anlinux:  `<div class="tip-box"><strong>AnLinux</strong> — Generates setup scripts for Termux. Supports Ubuntu, Debian, Kali, Fedora, Arch. Open AnLinux, pick a distro, copy the script, paste into Termux.</div>`,
+  chroot:   `<div class="warn-box"><strong>⚠ Root required.</strong> Chroot gives full native Linux performance. Use Linux Deploy app. Requires unlocked bootloader and root access (Magisk). Much faster than proot but requires root.</div>`,
+};
+
+function selectDistro(el, key) {
+  document.querySelectorAll(".distro-card").forEach(c => c.classList.remove("selected"));
+  el.classList.add("selected");
+  document.getElementById("method-detail").innerHTML = methodDetails[key] || "";
+}
+
+// Show default method detail
+document.getElementById("method-detail").innerHTML = methodDetails.termux;
+
+// ── Init ──
+fetchDevices();
+input.focus();
+</script>
+</body>
+</html>
