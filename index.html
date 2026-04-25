@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <title>ADB Web Shell</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -18,7 +18,7 @@
     --mono: "JetBrains Mono","Fira Mono","Cascadia Code",monospace;
     --sans: "Inter",system-ui,sans-serif;
   }
-  body { background:var(--bg); color:var(--text); font-family:var(--sans); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+  body { background:var(--bg); color:var(--text); font-family:var(--sans); height:100dvh; display:flex; flex-direction:column; overflow:hidden; padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
 
   /* Header */
   header { display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
@@ -30,6 +30,9 @@
   #device-select:focus { border-color:var(--blue); }
   .status-dot { width:8px; height:8px; border-radius:50%; background:var(--red); flex-shrink:0; transition:background 0.3s; }
   .status-dot.online { background:var(--green); }
+  .status-dot.warn { background:var(--yellow); }
+  .status-pill { display:flex; align-items:center; gap:5px; background:var(--surface2); border:1px solid var(--border); border-radius:20px; padding:3px 10px; font-size:11px; }
+  .status-pill-label { color:var(--muted); font-family:var(--mono); white-space:nowrap; }
   .hdr-btn { background:var(--surface2); border:1px solid var(--border); color:var(--muted); padding:4px 10px; border-radius:6px; font-size:12px; cursor:pointer; transition:color .15s,border-color .15s; }
   .hdr-btn:hover { color:var(--text); border-color:var(--blue); }
 
@@ -257,9 +260,15 @@
     ADB Web Shell
   </div>
   <div class="device-bar">
-    <span class="status-dot" id="status-dot"></span>
-    <span class="device-label">Device:</span>
-    <select id="device-select"><option value="">— no device —</option></select>
+    <div class="status-pill" id="server-pill">
+      <span class="status-dot" id="server-dot"></span>
+      <span class="status-pill-label" id="server-label">JS server…</span>
+    </div>
+    <div class="status-pill" id="adb-pill">
+      <span class="status-dot" id="adb-dot"></span>
+      <span class="status-pill-label" id="adb-label">ADB…</span>
+    </div>
+    <select id="device-select" style="margin-left:4px;"><option value="">— no device —</option></select>
     <button class="hdr-btn" id="refresh-btn">⟳ Refresh</button>
     <button class="hdr-btn" id="clear-btn">Clear</button>
   </div>
@@ -719,7 +728,10 @@ const terminal  = document.getElementById("terminal");
 const input     = document.getElementById("cmd-input");
 const runBtn    = document.getElementById("run-btn");
 const deviceSel = document.getElementById("device-select");
-const statusDot = document.getElementById("status-dot");
+const serverDot   = document.getElementById("server-dot");
+const serverLabel = document.getElementById("server-label");
+const adbDot      = document.getElementById("adb-dot");
+const adbLabel    = document.getElementById("adb-label");
 const histList  = document.getElementById("history-list");
 let cmdHistory = [], histIdx = -1;
 
@@ -737,16 +749,82 @@ document.querySelectorAll(".tab").forEach(tab => {
   });
 });
 
-// ── Devices ──
-async function fetchDevices() {
+// ── Status checks ──
+// ── Global readiness state ──
+let serverReady = false;
+let adbReady    = false;
+
+function updateInstallBlocking() {
+  const ready = serverReady && adbReady;
+  // Block all store install buttons
+  document.querySelectorAll('[id^="store-btn-"]').forEach(btn => {
+    btn.disabled = !ready;
+    btn.title = ready ? "" : "Waiting for JS server and ADB to be ready";
+  });
+  // Block custom APK install button only if no file selected AND not ready
+  const customBtn = document.getElementById("install-custom-btn");
+  if (customBtn && customBtn._hasFile) customBtn.disabled = !ready;
+}
+
+async function checkServer() {
   try {
-    const res = await fetch(`${SERVER}/devices`);
+    const res  = await fetch(`${SERVER}/mode`, { signal: AbortSignal.timeout(3000) });
+    const data = await res.json();
+    serverDot.className   = "status-dot online";
+    serverLabel.textContent = `JS ✓ (${data.mode || "ok"})`;
+    serverReady = true;
+    return true;
+  } catch {
+    serverDot.className   = "status-dot";
+    serverLabel.textContent = "JS offline";
+    serverReady = false;
+    return false;
+  }
+}
+
+async function checkAdb(devices) {
+  if (devices && devices.length) {
+    adbDot.className    = "status-dot online";
+    adbLabel.textContent = `ADB ✓ :5555`;
+    adbReady = true;
+  } else {
+    adbDot.className    = "status-dot warn";
+    adbLabel.textContent = "ADB no device";
+    adbReady = false;
+  }
+  updateInstallBlocking();
+}
+
+async function fetchDevices() {
+  const serverOk = await checkServer();
+  if (!serverOk) {
+    deviceSel.innerHTML = `<option value="">— server offline —</option>`;
+    adbDot.className    = "status-dot";
+    adbLabel.textContent = "ADB unknown";
+    adbReady = false;
+    updateInstallBlocking();
+    return;
+  }
+  try {
+    const res  = await fetch(`${SERVER}/devices`);
     const data = await res.json();
     deviceSel.innerHTML = "";
-    if (!data.devices.length) { deviceSel.innerHTML = `<option value="">— no device —</option>`; statusDot.classList.remove("online"); return; }
-    data.devices.forEach(d => { const o = document.createElement("option"); o.value = d.serial; o.textContent = `${d.model} (${d.serial})`; deviceSel.appendChild(o); });
-    statusDot.classList.add("online");
-  } catch { deviceSel.innerHTML = `<option value="">— server offline —</option>`; statusDot.classList.remove("online"); }
+    if (!data.devices || !data.devices.length) {
+      deviceSel.innerHTML = `<option value="">— no device —</option>`;
+      await checkAdb([]);
+      return;
+    }
+    data.devices.forEach(d => {
+      const o = document.createElement("option");
+      o.value = d.serial;
+      o.textContent = `${d.model} (${d.serial})`;
+      deviceSel.appendChild(o);
+    });
+    await checkAdb(data.devices);
+  } catch {
+    deviceSel.innerHTML = `<option value="">— error —</option>`;
+    await checkAdb([]);
+  }
 }
 
 // ── Shell ──
@@ -812,6 +890,10 @@ const STORE_APPS = [
 function setLog(el, text, state) { el.textContent = text; el.className = `install-log show ${state}`; }
 
 async function installApkBlob(blob, filename, logEl, btn) {
+  if (!serverReady || !adbReady) {
+    setLog(logEl, "✗ Cannot install — JS server or ADB is not ready. Check the status indicators in the header.", "error");
+    return;
+  }
   const serial = deviceSel.value || null;
   btn.disabled = true;
   setLog(logEl, "⟳ Uploading to server and running adb install…", "running");
@@ -908,7 +990,9 @@ function setFile(f) {
   selectedFile = f;
   dropSelected.textContent = `Selected: ${f.name} (${(f.size/1024/1024).toFixed(1)} MB)`;
   dropSelected.style.color = "var(--blue)";
-  installCustom.disabled = false;
+  installCustom._hasFile = true;
+  installCustom.disabled = !(serverReady && adbReady);
+  installCustom.title = (serverReady && adbReady) ? "" : "Waiting for JS server and ADB to be ready";
   customLog.className = "install-log";
 }
 installCustom.addEventListener("click", async () => {
@@ -947,6 +1031,8 @@ document.getElementById("method-detail").innerHTML = methodDetails.termux;
 // ── Init ──
 fetchDevices();
 input.focus();
+// Auto-refresh status every 10 seconds
+setInterval(fetchDevices, 10000);
 </script>
 </body>
 </html>
