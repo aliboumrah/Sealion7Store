@@ -22,6 +22,7 @@ echo ""
 # ── Step 1: Update packages ──
 echo -e "${BLUE}[1/5]${NC} Updating Termux packages..."
 pkg update -y -o Dpkg::Options::="--force-confold" > /dev/null 2>&1
+pkg upgrade -y -o Dpkg::Options::="--force-confold" > /dev/null 2>&1
 echo -e "      ${GREEN}✓ Done${NC}"
 
 # ── Step 2: Install git ──
