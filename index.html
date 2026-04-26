@@ -949,48 +949,38 @@ function apkMeta(filename) {
 
 async function fetchStoreApps() {
   const ts = Date.now();
-  const grid = document.getElementById("store-grid");
 
-  // Strategy 1: fetch the GitHub HTML page and parse APK links from it
-  // This avoids CORS issues since it's just a plain HTML page fetch
+  // Fetch the GitHub repo's JSON data API via a <script> tag trick
+  // GitHub exposes a JSON payload embedded in the HTML — no CORS needed
+  // We use an iframe + srcdoc approach via a Blob URL to read the page
+  // Simplest: use the raw GitHub API which allows cross-origin reads when
+  // fetched as 'no-cors' — but we can't read the body that way.
+
+  // Best working approach: GitHub's repo page rendered as text via fetch with mode:'no-cors'
+  // won't work. Instead use the GitHub "?raw=1" trick on a known manifest file.
+
+  // We maintain a apks.json file in the repo listing all APKs.
+  // This is the most reliable approach - pure static, no API, no CORS.
   try {
     const res = await fetch(
-      `https://api.allorigins.win/get?url=${encodeURIComponent("https://api.github.com/repos/aliboumrah/Sealion7Store/contents")}&t=${ts}`
+      `https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/apks.json?t=${ts}`
     );
-    if (!res.ok) throw new Error(`Proxy ${res.status}`);
+    if (!res.ok) throw new Error(`apks.json ${res.status}`);
     const data = await res.json();
-    const files = JSON.parse(data.contents);
-    if (!Array.isArray(files)) throw new Error("Not array");
-    const apks = files.filter(f => f.name.toLowerCase().endsWith(".apk"));
-    if (apks.length === 0) throw new Error("No APKs");
-    console.log("Proxy API found", apks.length, "APKs");
-    return apks.map(f => ({ filename: f.name, size: f.size || 0, ...apkMeta(f.name) }));
-  } catch(e1) {
-    console.warn("Proxy API failed:", e1.message);
+    if (Array.isArray(data) && data.length > 0) {
+      console.log("apks.json found", data.length, "APKs");
+      return data.map(f => ({
+        filename: typeof f === "string" ? f : f.filename,
+        size: f.size || 0,
+        ...apkMeta(typeof f === "string" ? f : f.filename)
+      }));
+    }
+    throw new Error("Empty apks.json");
+  } catch(e) {
+    console.warn("apks.json failed:", e.message);
   }
 
-  // Strategy 2: fetch GitHub HTML page and scrape APK filenames from links
-  try {
-    const res = await fetch(
-      `https://api.allorigins.win/get?url=${encodeURIComponent("https://github.com/aliboumrah/Sealion7Store")}&t=${ts}`
-    );
-    if (!res.ok) throw new Error(`HTML proxy ${res.status}`);
-    const data = await res.json();
-    const matches = [...data.contents.matchAll(/href="[^"]*\/blob\/main\/([^"?#]+\.apk)"/gi)];
-    const apks = [...new Set(matches.map(m => decodeURIComponent(m[1])))];
-    if (apks.length === 0) throw new Error("No APKs in HTML");
-    console.log("HTML scrape found", apks.length, "APKs:", apks);
-    return apks.map(f => ({ filename: f, size: 0, ...apkMeta(f) }));
-  } catch(e2) {
-    console.warn("HTML scrape failed:", e2.message);
-  }
-
-  // Static fallback
-  console.warn("Using static fallback list");
-  return [
-    { filename: "AppManager_v4.0.5.apk",                  size: 0, icon: "🛠", name: "App Manager", desc: "Package manager for DiLink OS." },
-    { filename: "GBox-1.5.6.0-150600-16538-telegram.apk", size: 0, icon: "📦", name: "GBox",        desc: "Google Play services layer." },
-  ];
+  return [];
 }
 
 function setLog(el, text, state) { el.textContent = text; el.className = `install-log show ${state}`; }
@@ -1058,7 +1048,13 @@ async function renderStore() {
   if (debug) debug.textContent = `Last updated: ${new Date().toLocaleTimeString()} · ${apps.length} APK(s) found`;
   grid.innerHTML = "";
   if (!apps.length) {
-    grid.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:12px 0;">No APKs found in the repo.</div>`;
+    grid.innerHTML = `<div style="color:var(--red);font-size:12px;padding:12px 0;line-height:1.8;">⚠ Could not load APKs.<br/>Make sure <code style="color:var(--accent)">apks.json</code> exists in your GitHub repo.<br/><span style="color:var(--muted);">See the format below ↓</span></div>
+      <div class="cmd-block" style="margin-top:8px;">[
+  "AppManager_v4.0.5.apk",
+  "GBox-1.5.6.0-150600-16538-telegram.apk",
+  "YourNewApp.apk"
+]</div>`;
+    if (debug) debug.textContent = `Failed to load — ${new Date().toLocaleTimeString()}`;
     return;
   }
   const colors = [
