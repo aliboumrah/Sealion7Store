@@ -334,11 +334,11 @@
     display: flex; align-items: center; justify-content: center;
     font-size: 12px; font-weight: 700; flex-shrink: 0;
   }
-  .step-num.green  { background:var(--green-dim);  color:var(--green);  border:1px solid var(--green);  box-shadow:0 0 6px rgba(0,212,138,0.3); }
-  .step-num.blue   { background:var(--accent-dim); color:var(--accent); border:1px solid var(--accent); box-shadow:0 0 6px var(--accent-glow); }
-  .step-num.purple { background:var(--purple-dim); color:var(--purple); border:1px solid var(--purple); }
-  .step-num.orange { background:var(--orange-dim); color:var(--orange); border:1px solid var(--orange); }
-  .step-num.yellow { background:var(--yellow-dim); color:var(--yellow); border:1px solid var(--yellow); }
+  .step-num.green  { background:#003a20; color:#00ff99; border:2px solid #00d48a; }
+  .step-num.blue   { background:#003035; color:#00ffee; border:2px solid #00c8d4; }
+  .step-num.purple { background:#2a1050; color:#cc99ff; border:2px solid #a078f0; }
+  .step-num.orange { background:#3a1800; color:#ffaa66; border:2px solid #ff7a30; }
+  .step-num.yellow { background:#3a2800; color:#ffdd66; border:2px solid #ffb830; }
 
   .step-title { font-size: 13px; font-weight: 600; color: var(--text); flex: 1; }
   .step-badge { font-size: 10px; padding: 3px 10px; border-radius: 20px; font-weight: 600; white-space: nowrap; letter-spacing:0.04em; }
@@ -498,6 +498,8 @@
       <button class="hdr-btn" id="store-refresh-btn" style="margin-left:auto;">⟳ Refresh</button>
     </div>
 
+    <!-- Debug info -->
+    <div id="store-debug" style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-bottom:4px;"></div>
     <!-- App cards -->
     <div id="store-grid" style="display:flex;flex-direction:column;gap:12px;"></div>
 
@@ -584,7 +586,7 @@
     <!-- Step 3: Run command -->
     <div class="step-card open" id="ts3">
       <div class="step-header" onclick="toggleStep('ts3')">
-        <div class="step-num yellow">3</div>
+        <div class="step-num yellow">4</div>
         <div class="step-title">Run this one command in Termux</div>
         <span class="step-badge badge-android">In Termux</span>
         <span class="step-chevron">▶</span>
@@ -625,7 +627,7 @@
           <div style="display:flex;flex-direction:column;gap:8px;margin:14px 0;">
 
             <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:#050505;border:1px solid #1e1e1e;border-radius:2px;">
-              <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);border:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--green);flex-shrink:0;">1</div>
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--green-dim);border:2px solid var(--green);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--green);flex-shrink:0;">1</div>
               <div>
                 <div style="font-size:13px;font-weight:600;color:var(--text);">Open Settings</div>
                 <div style="font-size:12px;color:var(--muted);margin-top:2px;">Tap the gear icon on the home screen or swipe down from the top bar.</div>
@@ -633,7 +635,7 @@
             </div>
 
             <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:#050505;border:1px solid #1e1e1e;border-radius:2px;">
-              <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);border:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--green);flex-shrink:0;">2</div>
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--surface3);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;">2</div>
               <div>
                 <div style="font-size:13px;font-weight:600;color:var(--text);">Go to System</div>
                 <div style="font-size:12px;color:var(--muted);margin-top:2px;">Scroll down and tap <strong style="color:#fff">System</strong> in the settings list.</div>
@@ -641,7 +643,7 @@
             </div>
 
             <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:#050505;border:1px solid #1e1e1e;border-radius:2px;">
-              <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);border:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--green);flex-shrink:0;">3</div>
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--surface3);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;">3</div>
               <div>
                 <div style="font-size:13px;font-weight:600;color:var(--text);">Tap Version</div>
                 <div style="font-size:12px;color:var(--muted);margin-top:2px;">Inside System, tap <strong style="color:#fff">Version</strong> to open the version info screen.</div>
@@ -649,7 +651,7 @@
             </div>
 
             <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:#050505;border:1px solid var(--yellow);border-left:3px solid var(--yellow);border-radius:2px;">
-              <div style="width:24px;height:24px;border-radius:50%;background:var(--yellow-dim);border:1px solid var(--yellow);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--yellow);flex-shrink:0;">4</div>
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--yellow-dim);border:2px solid var(--yellow);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--yellow);flex-shrink:0;">4</div>
               <div>
                 <div style="font-size:13px;font-weight:600;color:var(--yellow);">Press "Restore Factory" 10 times</div>
                 <div style="font-size:12px;color:var(--muted);margin-top:2px;">Find the <strong style="color:#fff">Restore Factory</strong> button and tap it <strong style="color:var(--yellow)">10 times rapidly</strong>. A hidden developer menu will appear. Do NOT confirm any factory reset prompt.</div>
@@ -657,7 +659,7 @@
             </div>
 
             <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:#050505;border:1px solid #1e1e1e;border-radius:2px;">
-              <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);border:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--green);flex-shrink:0;">5</div>
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--surface3);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;">5</div>
               <div>
                 <div style="font-size:13px;font-weight:600;color:var(--text);">Rotate the screen</div>
                 <div style="font-size:12px;color:var(--muted);margin-top:2px;">The hidden menu may require rotating the display orientation to reveal all options. Tap the rotate button if present.</div>
@@ -665,7 +667,7 @@
             </div>
 
             <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:var(--surface2);border:1px solid var(--accent);border-radius:8px;">
-              <div style="width:24px;height:24px;border-radius:50%;background:var(--blue-dim);border:1px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;">6</div>
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--accent-dim);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;">6</div>
               <div>
                 <div style="font-size:13px;font-weight:600;color:var(--accent);">Tap "Connect USB"</div>
                 <div style="font-size:12px;color:var(--muted);margin-top:2px;">In the hidden developer menu, tap <strong style="color:#fff">Connect USB</strong>. ADB is now enabled. Plug a USB cable from the car's data port to your laptop.</div>
@@ -925,26 +927,71 @@ document.getElementById("stop-btn").addEventListener("click", async () => {
 
 // ── GitHub APK Store ──
 const GITHUB_RAW = "https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/";
-const STORE_APPS = [
-  {
-    filename: "AppManager_v4.0.5.apk",
-    name: "App Manager",
-    version: "v4.0.5",
-    description: "Full-featured package manager. Allows installing any APK on the Sealion 7 without restrictions.",
-    icon: "🛠",
-    color: "var(--orange-dim)",
-    border: "var(--orange)",
-  },
-  {
-    filename: "GBox-1.5.6.0-150600-16538-telegram.apk",
-    name: "GBox",
-    version: "v1.5.6.0",
-    description: "Google Play services compatibility layer. Enables Google apps and services on DiLink OS.",
-    icon: "📦",
-    color: "var(--blue-dim)",
-    border: "var(--blue)",
-  },
-];
+const GITHUB_API = "https://api.github.com/repos/aliboumrah/Sealion7Store/contents/";
+
+// Icon/description hints for known APKs
+const APK_META = {
+  "appmanager": { icon: "🛠", name: "App Manager", desc: "Full-featured package manager for DiLink OS." },
+  "gbox":       { icon: "📦", name: "GBox",        desc: "Google Play services layer for DiLink OS." },
+  "termux":     { icon: "📟", name: "Termux",      desc: "Terminal emulator and Linux environment." },
+  "fdroid":     { icon: "🏪", name: "F-Droid",     desc: "Open source app repository." },
+};
+
+function apkMeta(filename) {
+  const lower = filename.toLowerCase();
+  for (const [key, meta] of Object.entries(APK_META)) {
+    if (lower.includes(key)) return meta;
+  }
+  // Generic fallback
+  const name = filename.replace(/[-_]/g, " ").replace(/\.apk$/i, "").replace(/v[\d.]+/i, "").trim();
+  return { icon: "📱", name, desc: filename };
+}
+
+async function fetchStoreApps() {
+  const ts = Date.now();
+  const grid = document.getElementById("store-grid");
+
+  // Strategy 1: fetch the GitHub HTML page and parse APK links from it
+  // This avoids CORS issues since it's just a plain HTML page fetch
+  try {
+    const res = await fetch(
+      `https://api.allorigins.win/get?url=${encodeURIComponent("https://api.github.com/repos/aliboumrah/Sealion7Store/contents")}&t=${ts}`
+    );
+    if (!res.ok) throw new Error(`Proxy ${res.status}`);
+    const data = await res.json();
+    const files = JSON.parse(data.contents);
+    if (!Array.isArray(files)) throw new Error("Not array");
+    const apks = files.filter(f => f.name.toLowerCase().endsWith(".apk"));
+    if (apks.length === 0) throw new Error("No APKs");
+    console.log("Proxy API found", apks.length, "APKs");
+    return apks.map(f => ({ filename: f.name, size: f.size || 0, ...apkMeta(f.name) }));
+  } catch(e1) {
+    console.warn("Proxy API failed:", e1.message);
+  }
+
+  // Strategy 2: fetch GitHub HTML page and scrape APK filenames from links
+  try {
+    const res = await fetch(
+      `https://api.allorigins.win/get?url=${encodeURIComponent("https://github.com/aliboumrah/Sealion7Store")}&t=${ts}`
+    );
+    if (!res.ok) throw new Error(`HTML proxy ${res.status}`);
+    const data = await res.json();
+    const matches = [...data.contents.matchAll(/href="[^"]*\/blob\/main\/([^"?#]+\.apk)"/gi)];
+    const apks = [...new Set(matches.map(m => decodeURIComponent(m[1])))];
+    if (apks.length === 0) throw new Error("No APKs in HTML");
+    console.log("HTML scrape found", apks.length, "APKs:", apks);
+    return apks.map(f => ({ filename: f, size: 0, ...apkMeta(f) }));
+  } catch(e2) {
+    console.warn("HTML scrape failed:", e2.message);
+  }
+
+  // Static fallback
+  console.warn("Using static fallback list");
+  return [
+    { filename: "AppManager_v4.0.5.apk",                  size: 0, icon: "🛠", name: "App Manager", desc: "Package manager for DiLink OS." },
+    { filename: "GBox-1.5.6.0-150600-16538-telegram.apk", size: 0, icon: "📦", name: "GBox",        desc: "Google Play services layer." },
+  ];
+}
 
 function setLog(el, text, state) { el.textContent = text; el.className = `install-log show ${state}`; }
 
@@ -971,6 +1018,10 @@ async function installApkBlob(blob, filename, logEl, btn) {
 }
 
 async function installFromGitHub(app, logEl, btn) {
+  if (!serverReady || !adbReady) {
+    setLog(logEl, "✗ Cannot install — JS server or ADB not ready.", "error");
+    return;
+  }
   btn.disabled = true;
   setLog(logEl, `⟳ Downloading ${app.filename} from GitHub…`, "running");
   try {
@@ -998,22 +1049,40 @@ async function installFromGitHub(app, logEl, btn) {
   }
 }
 
-function renderStore() {
+async function renderStore() {
   const grid = document.getElementById("store-grid");
+  const debug = document.getElementById("store-debug");
+  grid.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:12px 0;">⟳ Loading apps from GitHub…</div>`;
+  if (debug) debug.textContent = `Fetching at ${new Date().toLocaleTimeString()}…`;
+  const apps = await fetchStoreApps();
+  if (debug) debug.textContent = `Last updated: ${new Date().toLocaleTimeString()} · ${apps.length} APK(s) found`;
   grid.innerHTML = "";
-  STORE_APPS.forEach((app, i) => {
+  if (!apps.length) {
+    grid.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:12px 0;">No APKs found in the repo.</div>`;
+    return;
+  }
+  const colors = [
+    { bg:"var(--orange-dim)", border:"var(--orange)" },
+    { bg:"var(--blue-dim)",   border:"var(--blue)"   },
+    { bg:"var(--purple-dim)", border:"var(--purple)"  },
+    { bg:"var(--green-dim)",  border:"var(--green)"   },
+  ];
+  apps.forEach((app, i) => {
     const logId = `store-log-${i}`;
     const btnId = `store-btn-${i}`;
+    const c = colors[i % colors.length];
+    const sizeStr = app.size ? ` · ${(app.size/1024/1024).toFixed(1)} MB` : "";
     const card = document.createElement("div");
     card.style.cssText = `background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;`;
     card.innerHTML = `
       <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:48px;height:48px;background:${app.color};border:1px solid ${app.border};border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">${app.icon}</div>
+        <div style="width:48px;height:48px;background:${c.bg};border:1px solid ${c.border};border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">${app.icon}</div>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:14px;font-weight:700;color:var(--text);">${app.name} <span style="font-size:11px;font-weight:400;color:var(--muted);">${app.version}</span></div>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5;">${app.description}</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);">${app.name}<span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px;">${sizeStr}</span></div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5;">${app.desc}</div>
+          <div style="font-size:10px;color:var(--muted2);margin-top:2px;font-family:var(--mono);">${app.filename}</div>
         </div>
-        <button id="${btnId}" style="background:${app.color};border:1px solid ${app.border};color:${app.border};font-size:12px;font-weight:600;padding:8px 20px;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0;">Install</button>
+        <button id="${btnId}" class="install-btn" style="flex-shrink:0;">Install</button>
       </div>
       <div class="install-log" id="${logId}"></div>`;
     grid.appendChild(card);
@@ -1021,6 +1090,7 @@ function renderStore() {
       installFromGitHub(app, document.getElementById(logId), document.getElementById(btnId));
     });
   });
+  updateInstallBlocking();
 }
 
 document.getElementById("store-refresh-btn").addEventListener("click", renderStore);
