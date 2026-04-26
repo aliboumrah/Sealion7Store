@@ -272,25 +272,6 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`   Mode: ${IS_TERMUX ? `Termux → ADB ${ADB_HOST}` : "PC → ADB USB"}`);
 });
 
-// ── Stop server on Enter or Q ──
-// Uses readline which works reliably in Termux
-const readline = require("readline");
-
-function stopServer() {
-  console.log("\n🛑 Stopping... bye!\n");
-  process.exit(0);
-}
-
-try {
-  const rl = readline.createInterface({ input: process.stdin, terminal: false });
-  rl.on("line", (line) => {
-    const t = line.trim().toLowerCase();
-    if (t === "" || t === "q" || t === "quit" || t === "exit") {
-      stopServer();
-    }
-  });
-  rl.on("close", () => stopServer()); // triggered when terminal closes
-  console.log("   Press ENTER or type Q to stop.\n");
-} catch(e) {
-  console.log("   Kill with: kill " + process.pid + "\n");
-}
+// ── Stop via UI only (POST /stop) ──
+// Use the ⏹ Stop button in the web UI to stop the server.
+console.log(`   Stop: use the ⏹ Stop button in the UI, or: kill ${process.pid}\n`);
