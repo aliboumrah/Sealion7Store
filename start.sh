@@ -2,6 +2,7 @@
 
 # ─────────────────────────────────────────
 #  Sealion7Store — Termux Start Script
+#  Usage: bash start.sh
 # ─────────────────────────────────────────
 
 GREEN='\033[0;32m'
@@ -17,21 +18,6 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║      Sealion 7 ADB Web Shell      ║${NC}"
 echo -e "${GREEN}╚═══════════════════════════════════╝${NC}"
 echo ""
-
-# ── If piped from curl, re-download and exec directly ──
-# When run as "curl | bash", stdin is the pipe so read/node readline breaks.
-# We detect this and re-run the script from a real file instead.
-if [ ! -t 0 ]; then
-  echo -e "${YELLOW}Detected pipe mode. Downloading script and re-running...${NC}"
-  pkg install curl -y > /dev/null 2>&1
-  SCRIPT_PATH="$HOME/start_sealion.sh"
-  curl -s https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/start.sh -o "$SCRIPT_PATH"
-  chmod +x "$SCRIPT_PATH"
-  echo -e "${GREEN}✓ Downloaded. Launching...${NC}"
-  echo ""
-  exec bash "$SCRIPT_PATH"
-  exit 0
-fi
 
 # ── Step 1: Update packages ──
 echo -e "${BLUE}[1/5]${NC} Updating Termux packages..."
@@ -90,61 +76,12 @@ else
   echo -e "${RED}⚠ ADB not connected. Enable from Settings → System → Version → tap Restore 10x${NC}"
 fi
 
-# ── Ask run mode ──
+# ── Start server ──
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "  How do you want to run the server?"
-echo ""
-echo -e "  ${YELLOW}1${NC}) Foreground  — see logs, stop with Enter/Q"
-echo -e "  ${YELLOW}2${NC}) Background  — runs silently, stop via UI"
-echo -e "  ${YELLOW}3${NC}) Screen      — detachable session (recommended)"
-echo ""
+echo -e "  Server starting on ${YELLOW}http://localhost:3000${NC}"
+echo -e "  Stop: use the ${RED}⏹ Stop${NC} button in the UI"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -ne "  Choice [1/2/3]: "
-read -r CHOICE
+echo ""
 
-case "$CHOICE" in
-  2)
-    pkill -f "node.*adb-server.js" 2>/dev/null
-    sleep 0.5
-    nohup node "$REPO_DIR/adb-server.js" > "$REPO_DIR/server.log" 2>&1 &
-    SERVER_PID=$!
-    sleep 1
-    if kill -0 $SERVER_PID 2>/dev/null; then
-      echo ""
-      echo -e "${GREEN}✓ Server running in background (PID $SERVER_PID)${NC}"
-      echo -e "  Logs: ${BLUE}$REPO_DIR/server.log${NC}"
-      echo -e "  Open: ${BLUE}http://localhost:3000${NC}"
-      echo -e "  Stop: ${YELLOW}pkill -f 'node.*adb-server.js'${NC} or use ⏹ in UI"
-      echo ""
-    else
-      echo -e "${RED}✗ Server failed. Check: $REPO_DIR/server.log${NC}"
-    fi
-    ;;
-  3)
-    if ! command -v screen &> /dev/null; then
-      pkg install screen -y > /dev/null 2>&1
-    fi
-    screen -S adbserver -X quit 2>/dev/null
-    sleep 0.5
-    echo ""
-    echo -e "${GREEN}✓ Starting screen session 'adbserver'${NC}"
-    echo -e "  Open:      ${BLUE}http://localhost:3000${NC}"
-    echo -e "  Detach:    ${YELLOW}Ctrl+A then D${NC}"
-    echo -e "  Re-attach: ${YELLOW}screen -r adbserver${NC}"
-    echo ""
-    sleep 1
-    screen -S adbserver node "$REPO_DIR/adb-server.js"
-    ;;
-  *)
-    echo ""
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  Server on ${YELLOW}http://localhost:3000${NC}"
-    echo -e "  Stop: press ${RED}Enter${NC} or type ${RED}Q${NC}"
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    node "$REPO_DIR/adb-server.js"
-    echo ""
-    echo -e "${YELLOW}Server stopped. Run 'bash ~/start_sealion.sh' to restart.${NC}"
-    ;;
-esac
+node "$REPO_DIR/adb-server.js"
