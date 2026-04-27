@@ -627,6 +627,24 @@
       </div>
     </div>
 
+    <!-- Step 5: Auto-start on Termux launch -->
+    <div class="step-card open" id="ts5">
+      <div class="step-header" onclick="toggleStep('ts5')">
+        <div class="step-num green">5</div>
+        <div class="step-title">Auto-start server when Termux opens</div>
+        <span class="step-badge badge-android">In Termux</span>
+        <span class="step-chevron">▶</span>
+      </div>
+      <div class="step-body">
+        <p>Run this once to make the server start automatically every time Termux is opened:</p>
+        <div class="cmd-block"><span class="kw">echo</span> <span class="str">'curl -s https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/start.sh -o ~/start.sh && bash ~/start.sh'</span> >> ~/.bashrc</div>
+        <div class="tip-box"><strong>💡</strong> Termux runs <code>~/.bashrc</code> on every launch. This will pull the latest script and start the server automatically.</div>
+        <div class="warn-box"><strong>⚠ To remove auto-start</strong> later, run:<br/><br/>
+          <span style="font-family:var(--mono);font-size:11px;">sed -i '/start.sh/d' ~/.bashrc</span>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /termux-pane -->
 
   <!-- ADB Enable pane -->
