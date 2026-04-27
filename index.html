@@ -1294,19 +1294,55 @@ async function pullApk(pkg, btn) {
   btn.disabled = true;
   btn.textContent = "⟳";
   bar.style.display = "block";
+  bar.style.color = "var(--accent)";
   bar.textContent = `⟳ Finding APK path for ${pkg}…`;
 
-  try {
-    // Step 1: get APK path
-    const pathRes = await fetch(`${SERVER}/shell`, {
+  async function shellCmd(cmd) {
+    const r = await fetch(`${SERVER}/shell`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command: `pm path ${pkg}`, serial })
+      body: JSON.stringify({ command: cmd, serial })
     });
-    const pathData = await pathRes.json();
-    const match = pathData.output.match(/package:(.+)/);
-    if (!match) throw new Error("Could not find APK path: " + pathData.output);
-    const apkPath = match[1].trim();
+    return (await r.json()).output || "";
+  }
+
+  try {
+    let apkPath = null;
+
+    // Strategy 1: pm path (works for user/3rd-party apps)
+    const pmOut = await shellCmd(`pm path ${pkg}`);
+    const pmMatch = pmOut.match(/package:(.+\.apk)/);
+    if (pmMatch) {
+      apkPath = pmMatch[1].trim();
+    }
+
+    // Strategy 2: dumpsys package (works for hidden/system apps)
+    if (!apkPath) {
+      const dsOut = await shellCmd(`dumpsys package ${pkg} | grep codePath`);
+      const dsMatch = dsOut.match(/codePath=(.+)/);
+      if (dsMatch) {
+        const codePath = dsMatch[1].trim();
+        // codePath may be a dir like /system/app/Navigation — find the apk inside
+        const lsOut = await shellCmd(`ls "${codePath}"/*.apk 2>/dev/null || ls "${codePath}" 2>/dev/null`);
+        const apkLine = lsOut.trim().split("\n").find(l => l.endsWith(".apk"));
+        if (apkLine) {
+          apkPath = apkLine.trim().startsWith("/") ? apkLine.trim() : `${codePath}/${apkLine.trim()}`;
+        } else if (codePath.endsWith(".apk")) {
+          apkPath = codePath;
+        }
+      }
+    }
+
+    // Strategy 3: find command
+    if (!apkPath) {
+      bar.textContent = `⟳ Searching filesystem for ${pkg}…`;
+      const findOut = await shellCmd(`find /system /data/app -name "*.apk" 2>/dev/null | grep -i "${pkg.split(".").pop()}" | head -5`);
+      const findLine = findOut.trim().split("\n")[0];
+      if (findLine && findLine.endsWith(".apk")) apkPath = findLine.trim();
+    }
+
+    if (!apkPath) throw new Error(`APK not found for ${pkg}. It may be a virtual or framework package.`);
+
     bar.textContent = `⟳ Pulling ${apkPath}…`;
 
     // Step 2: pull APK via /pull endpoint
