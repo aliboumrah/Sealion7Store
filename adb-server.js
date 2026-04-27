@@ -27,6 +27,7 @@ const corsHeaders = {
   "Access-Control-Allow-Origin":  "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, X-Device-Serial, X-Filename",
+  "Access-Control-Expose-Headers": "Content-Disposition, Content-Length",
 };
 
 // ── Connect ADB to localhost:5555 (Termux mode only) ──
@@ -243,6 +244,80 @@ const server = http.createServer(async (req, res) => {
     const out = await adbConnect();
     res.writeHead(200);
     res.end(JSON.stringify({ success: out.includes("connected"), output: out }));
+    return;
+  }
+
+  // ── GET /store — fetch APK list from GitHub (server-side, no CORS) ──
+  if (req.method === "GET" && pathname === "/store") {
+    try {
+      const https = require("https");
+      const data = await new Promise((resolve, reject) => {
+        const opts = {
+          hostname: "api.github.com",
+          path: "/repos/aliboumrah/Sealion7Store/contents",
+          headers: {
+            "User-Agent": "Sealion7-ADB-Shell",
+            "Accept": "application/vnd.github.v3+json"
+          }
+        };
+        https.get(opts, (r) => {
+          let body = "";
+          r.on("data", c => body += c);
+          r.on("end", () => {
+            try { resolve(JSON.parse(body)); }
+            catch(e) { reject(e); }
+          });
+        }).on("error", reject);
+      });
+      const apks = Array.isArray(data)
+        ? data.filter(f => f.name.toLowerCase().endsWith(".apk"))
+              .map(f => ({ name: f.name, size: f.size }))
+        : [];
+      res.writeHead(200);
+      res.end(JSON.stringify({ apks }));
+    } catch(e) {
+      res.writeHead(200);
+      res.end(JSON.stringify({ apks: [], error: e.message }));
+    }
+    return;
+  }
+
+  // ── POST /pull — pull a file from the device and stream it to browser ──
+  if (req.method === "POST" && pathname === "/pull") {
+    const body = await parseBody(req);
+    const { path: remotePath, serial } = body;
+    if (!remotePath) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ success: false, output: "Missing path" }));
+      return;
+    }
+    const tmpPath = require("path").join(
+      IS_TERMUX ? (process.env.HOME || "/data/data/com.termux/files/home") : require("os").tmpdir(),
+      `pull_${Date.now()}.apk`
+    );
+    // runAdb already handles Termux/serial targeting internally
+    const pullResult = await runAdb(["pull", remotePath, tmpPath], serial);
+    if (!pullResult.success && !pullResult.output.includes("pulled")) {
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: false, output: pullResult.output }));
+      return;
+    }
+    try {
+      const fileData = require("fs").readFileSync(tmpPath);
+      const filename = remotePath.split("/").pop();
+      res.writeHead(200, {
+        "Content-Type": "application/vnd.android.package-archive",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Length": fileData.length,
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(fileData);
+    } catch(e) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ success: false, output: e.message }));
+    } finally {
+      try { require("fs").unlinkSync(tmpPath); } catch {}
+    }
     return;
   }
 
