@@ -1224,8 +1224,9 @@ async function loadPackages() {
   countEl.textContent = "";
 
   // flags: -3 = 3rd party, -s = system, empty = all
+  // -u includes uninstalled/hidden packages too
   const flag = filter === "3" ? "-3" : filter === "s" ? "-s" : "";
-  const cmd = `pm list packages ${flag}`.trim();
+  const cmd = `pm list packages -a ${flag}`.trim();
 
   try {
     const res = await fetch(`${SERVER}/shell`, {
@@ -1236,15 +1237,11 @@ async function loadPackages() {
     const data = await res.json();
     if (!data.success) throw new Error(data.output);
 
-    allPackages = data.output.trim().split("\n")
-      .map(l => {
-        // Handle formats:
-        // "package:com.example"
-        // "package:com.example dataDir=/data/..."
-        // "package:com.example=1234"  (with versionCode)
-        const match = l.match(/package:([^\s=]+)/);
-        return match ? match[1].trim() : null;
-      })
+    // BYD DiLink returns all packages on ONE line separated by spaces
+    // Extract all package names using a global regex match
+    const matches = data.output.matchAll(/package:([^\s=:]+)/g);
+    allPackages = [...matches]
+      .map(m => m[1].trim())
       .filter(Boolean)
       .filter((v, i, a) => a.indexOf(v) === i) // deduplicate
       .sort();
