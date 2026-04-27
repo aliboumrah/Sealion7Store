@@ -452,23 +452,52 @@
   <div class="tab active" data-tab="linux">🚗 Enable ADB</div>
   <div class="tab" data-tab="termux">📟 Termux</div>
   <div class="tab" data-tab="apk">🏪 App Store</div>
+  <div class="tab" data-tab="packages">📋 Packages</div>
   <div class="tab" data-tab="shell">⌨ Shell</div>
 </div>
 
 <div class="quick-bar" id="quick-bar">
-  <span class="quick-label">Quick:</span>
+  <span class="quick-label">ADB:</span>
   <button class="qbtn" data-cmd="getprop ro.product.model">model</button>
   <button class="qbtn" data-cmd="getprop ro.build.version.release">android ver</button>
   <button class="qbtn" data-cmd="dumpsys battery">battery</button>
-  <button class="qbtn" data-cmd="ps -e">processes</button>
-  <button class="qbtn" data-cmd="df -h">disk usage</button>
-  <button class="qbtn" data-cmd="ip addr">network</button>
-  <button class="qbtn" data-cmd="logcat -d -t 50">logcat (50)</button>
-  <button class="qbtn" data-cmd="pm list packages -3">3rd-party apps</button>
   <button class="qbtn" data-cmd="wm size">screen size</button>
+  <button class="qbtn" data-cmd="df -h">disk</button>
+  <button class="qbtn" data-cmd="ip addr show wlan0">wifi ip</button>
+  <button class="qbtn" data-cmd="logcat -d -t 30">logcat</button>
+  <button class="qbtn" data-cmd="pm list packages -3">user apps</button>
+  <button class="qbtn" data-cmd="settings get global airplane_mode_on">airplane</button>
+  <button class="qbtn" data-cmd="dumpsys window displays | grep mCurrentFocus">focus</button>
+  <button class="qbtn" data-cmd="am start -n com.termux/.HomeActivity">open termux</button>
 </div>
 
 <div class="main">
+
+  <!-- Packages pane -->
+  <div id="packages-pane" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);">
+
+    <!-- Toolbar -->
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;">
+      <input id="pkg-search" type="text" placeholder="Search packages…"
+        style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;"/>
+      <select id="pkg-filter" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:8px;outline:none;cursor:pointer;">
+        <option value="all">All packages</option>
+        <option value="3">3rd-party only</option>
+        <option value="s">System only</option>
+      </select>
+      <button id="pkg-refresh-btn" class="hdr-btn" style="white-space:nowrap;">⟳ Refresh</button>
+      <span id="pkg-count" style="font-size:11px;color:var(--muted);white-space:nowrap;"></span>
+    </div>
+
+    <!-- Pull status bar -->
+    <div id="pkg-pull-bar" style="display:none;padding:8px 16px;background:var(--accent-dim);border-bottom:1px solid var(--accent);font-size:12px;color:var(--accent);font-family:var(--mono);flex-shrink:0;"></div>
+
+    <!-- Package list -->
+    <div id="pkg-list" style="flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;">
+      <div style="color:var(--muted);font-size:12px;padding:20px;text-align:center;">Click ⟳ Refresh to load packages</div>
+    </div>
+
+  </div>
 
   <!-- Shell pane -->
   <div id="terminal-pane" style="position:relative;display:none;flex-direction:column;flex:1;overflow:hidden;">
@@ -711,13 +740,16 @@ const histList  = document.getElementById("history-list");
 let cmdHistory = [], histIdx = -1;
 
 // ── Tabs ──
-const panes = { linux: document.getElementById("linux-pane"), termux: document.getElementById("termux-pane"), apk: document.getElementById("apk-pane"), shell: document.getElementById("terminal-pane") };
+const panes = { linux: document.getElementById("linux-pane"), termux: document.getElementById("termux-pane"), apk: document.getElementById("apk-pane"), packages: document.getElementById("packages-pane"), shell: document.getElementById("terminal-pane") };
+let allPackages = [];
 const quickBar = document.getElementById("quick-bar");
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
     tab.classList.add("active");
-    switchTab(tab.dataset.tab);
+    const t = tab.dataset.tab;
+    switchTab(t);
+    if (t === "packages" && allPackages.length === 0) loadPackages();
   });
 });
 
@@ -773,21 +805,22 @@ function updateTabVisibility() {
   const termuxTab = document.querySelector('[data-tab="termux"]');
   const adbTab    = document.querySelector('[data-tab="linux"]');
   const activeTab = document.querySelector('.tab.active');
+  const currentTab = activeTab ? activeTab.dataset.tab : null;
 
   // Hide Termux tab if JS server is OK
   if (termuxTab) {
     termuxTab.style.display = serverReady ? "none" : "";
-    // If termux tab was active and now hidden, switch to adb tab
-    if (serverReady && activeTab && activeTab.dataset.tab === "termux") {
-      switchTab("linux");
+    // Only auto-switch if THIS tab is currently active
+    if (serverReady && currentTab === "termux") {
+      switchTab(adbReady ? "apk" : "linux");
     }
   }
 
   // Hide ADB tab if ADB is connected
   if (adbTab) {
     adbTab.style.display = adbReady ? "none" : "";
-    // If adb tab was active and now hidden, switch to store tab
-    if (adbReady && activeTab && activeTab.dataset.tab === "linux") {
+    // Only auto-switch if THIS tab is currently active
+    if (adbReady && currentTab === "linux") {
       switchTab("apk");
     }
   }
@@ -1152,6 +1185,135 @@ function selectDistro(el, key) {
 
 // Show default method detail
 document.getElementById("method-detail").innerHTML = methodDetails.termux;
+
+// ── Packages tab ──
+async function loadPackages() {
+  const serial = deviceSel.value || null;
+  const filter = document.getElementById("pkg-filter").value;
+  const listEl = document.getElementById("pkg-list");
+  const countEl = document.getElementById("pkg-count");
+  listEl.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center;"><span class="spinner">⟳</span> Loading packages…</div>`;
+  countEl.textContent = "";
+
+  // flags: -3 = 3rd party, -s = system, empty = all
+  const flag = filter === "3" ? "-3" : filter === "s" ? "-s" : "";
+  const cmd = `pm list packages ${flag}`.trim();
+
+  try {
+    const res = await fetch(`${SERVER}/shell`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: cmd, serial })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.output);
+
+    allPackages = data.output.trim().split("\n").map(l => l.replace("package:", "").trim())
+      .filter(Boolean)
+      .sort();
+
+    countEl.textContent = `${allPackages.length} packages`;
+    renderPackages();
+  } catch(e) {
+    listEl.innerHTML = `<div style="color:var(--red);font-size:12px;padding:20px;">✗ ${e.message}</div>`;
+  }
+}
+
+function renderPackages() {
+  const search = document.getElementById("pkg-search").value.toLowerCase();
+  const listEl = document.getElementById("pkg-list");
+  const filtered = allPackages.filter(p => p.toLowerCase().includes(search));
+  document.getElementById("pkg-count").textContent = `${filtered.length} / ${allPackages.length} packages`;
+
+  if (!filtered.length) {
+    listEl.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center;">No packages match "${search}"</div>`;
+    return;
+  }
+
+  listEl.innerHTML = "";
+  filtered.forEach(pkg => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border2);transition:background .1s;";
+    row.onmouseenter = () => row.style.background = "var(--surface2)";
+    row.onmouseleave = () => row.style.background = "";
+
+    const name = document.createElement("div");
+    name.style.cssText = "flex:1;font-family:var(--mono);font-size:12px;color:var(--text);word-break:break-all;";
+    name.textContent = pkg;
+
+    const pullBtn = document.createElement("button");
+    pullBtn.textContent = "⬇ Pull";
+    pullBtn.style.cssText = "background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);font-size:11px;padding:4px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s;";
+    pullBtn.onmouseenter = () => { pullBtn.style.background = "var(--accent)"; pullBtn.style.color = "#000"; };
+    pullBtn.onmouseleave = () => { pullBtn.style.background = "var(--accent-dim)"; pullBtn.style.color = "var(--accent)"; };
+    pullBtn.onclick = () => pullApk(pkg, pullBtn);
+
+    row.appendChild(name);
+    row.appendChild(pullBtn);
+    listEl.appendChild(row);
+  });
+}
+
+async function pullApk(pkg, btn) {
+  const serial = deviceSel.value || null;
+  const bar = document.getElementById("pkg-pull-bar");
+  btn.disabled = true;
+  btn.textContent = "⟳";
+  bar.style.display = "block";
+  bar.textContent = `⟳ Finding APK path for ${pkg}…`;
+
+  try {
+    // Step 1: get APK path
+    const pathRes = await fetch(`${SERVER}/shell`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: `pm path ${pkg}`, serial })
+    });
+    const pathData = await pathRes.json();
+    const match = pathData.output.match(/package:(.+)/);
+    if (!match) throw new Error("Could not find APK path: " + pathData.output);
+    const apkPath = match[1].trim();
+    bar.textContent = `⟳ Pulling ${apkPath}…`;
+
+    // Step 2: pull APK via /pull endpoint
+    const pullRes = await fetch(`${SERVER}/pull`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: apkPath, serial })
+    });
+    if (!pullRes.ok) throw new Error(`Pull failed: ${pullRes.status}`);
+
+    // Step 3: trigger download in browser
+    const blob = await pullRes.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = pkg + ".apk";
+    a.click();
+    URL.revokeObjectURL(url);
+
+    bar.textContent = `✓ ${pkg}.apk downloaded successfully`;
+    bar.style.color = "var(--green)";
+    setTimeout(() => {
+      bar.style.display = "none";
+      bar.style.color = "var(--accent)";
+    }, 3000);
+  } catch(e) {
+    bar.textContent = `✗ ${e.message}`;
+    bar.style.color = "var(--red)";
+    setTimeout(() => {
+      bar.style.display = "none";
+      bar.style.color = "var(--accent)";
+    }, 4000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "⬇ Pull";
+  }
+}
+
+document.getElementById("pkg-refresh-btn").addEventListener("click", loadPackages);
+document.getElementById("pkg-search").addEventListener("input", renderPackages);
+document.getElementById("pkg-filter").addEventListener("change", loadPackages);
 
 // ── Init ──
 serverUrlInput.value = SERVER;
