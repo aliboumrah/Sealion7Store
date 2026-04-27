@@ -1236,8 +1236,17 @@ async function loadPackages() {
     const data = await res.json();
     if (!data.success) throw new Error(data.output);
 
-    allPackages = data.output.trim().split("\n").map(l => l.replace("package:", "").trim())
+    allPackages = data.output.trim().split("\n")
+      .map(l => {
+        // Handle formats:
+        // "package:com.example"
+        // "package:com.example dataDir=/data/..."
+        // "package:com.example=1234"  (with versionCode)
+        const match = l.match(/package:([^\s=]+)/);
+        return match ? match[1].trim() : null;
+      })
       .filter(Boolean)
+      .filter((v, i, a) => a.indexOf(v) === i) // deduplicate
       .sort();
 
     countEl.textContent = `${allPackages.length} packages`;
