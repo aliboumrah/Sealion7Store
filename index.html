@@ -1343,9 +1343,13 @@ async function pullApk(pkg, btn) {
 
     if (!apkPath) throw new Error(`APK not found for ${pkg}. It may be a virtual or framework package.`);
 
-    bar.textContent = `⟳ Pulling ${apkPath}…`;
+    // Step 2: get file size first
+    const sizeOut = await shellCmd(`stat -c%s "${apkPath}" 2>/dev/null || wc -c < "${apkPath}" 2>/dev/null`);
+    const totalBytes = parseInt(sizeOut.trim()) || 0;
+    const totalMB = totalBytes ? (totalBytes / 1024 / 1024).toFixed(1) + " MB" : "unknown size";
+    bar.textContent = `⟳ Pulling ${apkPath} (${totalMB})…`;
 
-    // Step 2: pull APK via /pull endpoint
+    // Step 3: pull APK via /pull endpoint with progress tracking
     const pullRes = await fetch(`${SERVER}/pull`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1361,8 +1365,28 @@ async function pullApk(pkg, btn) {
       throw new Error(errData.output || "Pull failed");
     }
 
-    // Step 3: trigger download in browser
-    const blob = await pullRes.blob();
+    // Step 4: stream with progress
+    const contentLength = parseInt(pullRes.headers.get("Content-Length") || "0");
+    const reader = pullRes.body.getReader();
+    const chunks = [];
+    let received = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      const pct = contentLength ? Math.round(received / contentLength * 100) : null;
+      const recvMB = (received / 1024 / 1024).toFixed(1);
+      const totalDisp = contentLength ? (contentLength / 1024 / 1024).toFixed(1) + " MB" : totalMB;
+      bar.textContent = pct !== null
+        ? `⟳ Downloading… ${recvMB} MB / ${totalDisp} (${pct}%)`
+        : `⟳ Downloading… ${recvMB} MB`;
+    }
+
+    // Step 5: trigger browser download
+    bar.textContent = `⟳ Preparing download…`;
+    const blob = new Blob(chunks, { type: "application/vnd.android.package-archive" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1370,7 +1394,8 @@ async function pullApk(pkg, btn) {
     a.click();
     URL.revokeObjectURL(url);
 
-    bar.textContent = `✓ ${pkg}.apk downloaded successfully`;
+    const finalMB = (received / 1024 / 1024).toFixed(1);
+    bar.textContent = `✓ ${pkg}.apk downloaded (${finalMB} MB)`;
     bar.style.color = "var(--green)";
     setTimeout(() => {
       bar.style.display = "none";
