@@ -1905,10 +1905,11 @@ async function abrpSend() {
     document.getElementById("abrp-status").innerHTML = `<span style="color:var(--red);">✗ Enter your ABRP token first</span>`;
     return;
   }
-  const serial = deviceSel.value || null;
+  const serial    = deviceSel.value || null;
   const statusEl  = document.getElementById("abrp-status");
   const payloadEl = document.getElementById("abrp-payload");
-  statusEl.innerHTML = `<span style="color:var(--muted);">⟳ Fetching car data…</span>`;
+  statusEl.innerHTML = `<span style="color:var(--muted);">⟳ Fetching car data and sending…</span>`;
+  payloadEl.style.display = "none";
 
   try {
     const res  = await fetch(`${SERVER}/abrp`, {
@@ -1917,14 +1918,22 @@ async function abrpSend() {
       body: JSON.stringify({ token, serial })
     });
     const data = await res.json();
-    if (data.success) {
-      const tlm = data.tlm || {};
-      statusEl.innerHTML = `<span style="color:var(--green);">✓ Sent at ${new Date().toLocaleTimeString()}</span>`;
-      payloadEl.style.display = "block";
-      payloadEl.textContent = JSON.stringify(tlm, null, 2);
-    } else {
-      statusEl.innerHTML = `<span style="color:var(--red);">✗ ${data.output}</span>`;
-    }
+    const tlm    = data.tlm    || {};
+    const output = data.output || {};
+
+    // Show status
+    const abrpStatus = typeof output === "object" ? output.status : output;
+    const ok = data.success && (abrpStatus === "ok" || abrpStatus === 1);
+    statusEl.innerHTML = ok
+      ? `<span style="color:var(--green);">✓ Sent at ${new Date().toLocaleTimeString()} · ABRP: ${abrpStatus}</span>`
+      : `<span style="color:var(--red);">✗ ${data.success ? "ABRP error: " + JSON.stringify(output) : (data.output || "Failed")}</span>`;
+
+    // Show payload
+    payloadEl.style.display = "block";
+    payloadEl.textContent =
+      "=== Sent to ABRP ===\n" + JSON.stringify(tlm, null, 2) +
+      "\n\n=== ABRP Response ===\n" + JSON.stringify(output, null, 2);
+
   } catch(e) {
     statusEl.innerHTML = `<span style="color:var(--red);">✗ ${e.message}</span>`;
   }
