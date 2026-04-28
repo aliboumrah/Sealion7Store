@@ -535,20 +535,40 @@
       <div class="guide-hero-icon">🗺</div>
       <div>
         <h1>ABRP Live Data</h1>
-        <p>Push live SOC, range and speed to <strong>A Better Route Planner</strong> automatically every few seconds.</p>
+        <p>Push live telemetry to <strong>A Better Route Planner</strong>. Login with OAuth2 or paste your token manually.</p>
       </div>
     </div>
 
-    <!-- Token input -->
+    <!-- Auth card -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;flex-shrink:0;">
-      <div class="apk-section-title">ABRP User Token</div>
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <input id="abrp-token" type="text" placeholder="Paste your ABRP token here…"
-          style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--accent);font-family:var(--mono);font-size:12px;outline:none;"/>
-        <button id="abrp-save-btn" class="install-btn" style="flex-shrink:0;">Save</button>
+      <div class="apk-section-title">Authentication</div>
+
+      <!-- User info (shown when logged in) -->
+      <div id="abrp-user-info" style="display:none;align-items:center;gap:12px;padding:10px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:8px;margin-bottom:10px;">
+        <span style="font-size:22px;">👤</span>
+        <div style="flex:1;">
+          <div id="abrp-user-name" style="font-size:13px;font-weight:600;color:var(--text);"></div>
+          <div id="abrp-user-email" style="font-size:11px;color:var(--muted);margin-top:2px;"></div>
+          <div id="abrp-vehicle-name" style="font-size:11px;color:var(--accent);margin-top:2px;"></div>
+        </div>
+        <button id="abrp-logout-btn" class="hdr-btn" style="color:var(--red);border-color:var(--red-dim);">Logout</button>
       </div>
-      <div class="tip-box" style="margin-top:10px;">
-        <strong>How to get your token:</strong> Open ABRP → Settings → <strong>Live Data</strong> → Select <strong>Generic / Torque</strong> → Copy the token shown.
+
+      <!-- OAuth login button -->
+      <div id="abrp-login-section">
+        <button id="abrp-oauth-btn" class="install-btn" style="width:100%;justify-content:center;display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          🔐 Login with ABRP Account
+        </button>
+        <div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:10px;">— or —</div>
+        <div class="apk-section-title" style="margin-bottom:6px;">Manual Token</div>
+        <div style="display:flex;gap:8px;">
+          <input id="abrp-token" type="text" placeholder="Paste your ABRP token here…"
+            style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--accent);font-family:var(--mono);font-size:12px;outline:none;"/>
+          <button id="abrp-save-btn" class="install-btn" style="flex-shrink:0;">Save</button>
+        </div>
+        <div class="tip-box" style="margin-top:10px;">
+          <strong>Manual token:</strong> ABRP → Settings → Live Data → Generic/Torque → Copy token.
+        </div>
       </div>
     </div>
 
@@ -571,7 +591,7 @@
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;flex-shrink:0;">
       <div class="apk-section-title">Last Sent Payload</div>
       <div id="abrp-status" style="margin-top:8px;font-size:12px;color:var(--muted);"></div>
-      <div id="abrp-payload" style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--accent);background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:10px;display:none;white-space:pre;"></div>
+      <div id="abrp-payload" style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--accent);background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:10px;display:none;white-space:pre;overflow-x:auto;"></div>
     </div>
 
   </div>
