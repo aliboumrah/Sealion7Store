@@ -321,6 +321,77 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── GET /carservice — run dumpsys car_service and return parsed JSON ──
+  if (req.method === "GET" && pathname === "/carservice") {
+    const serial = (parsed.query && parsed.query.serial) || null;
+    const result = await runAdb(["shell", "dumpsys", "car_service"], serial);
+    if (!result.success) {
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: false, raw: result.output, sections: {} }));
+      return;
+    }
+
+    // Parse UTF-16LE or plain text output
+    let text = result.output;
+
+    // Split into sections by *SectionName*
+    const sectionRegex = /\*([^*
+]+)\*/g;
+    const sectionMatches = [...text.matchAll(sectionRegex)];
+    const sections = {};
+
+    sectionMatches.forEach((match, idx) => {
+      const name = match[1].trim();
+      const start = match.index + match[0].length;
+      const end = idx + 1 < sectionMatches.length ? sectionMatches[idx + 1].index : text.length;
+      const body = text.slice(start, end).trim();
+
+      // Parse key:value pairs from body
+      const props = {};
+      const lines = body.split(/?
+/);
+      lines.forEach(line => {
+        line = line.trim();
+        if (!line) return;
+        // Match "key: value" or "key:value"
+        const kv = line.match(/^([^:]+?)\s*:\s*(.*)$/);
+        if (kv) {
+          props[kv[1].trim()] = kv[2].trim();
+        } else {
+          // Store as plain line
+          if (!props["_lines"]) props["_lines"] = [];
+          props["_lines"].push(line);
+        }
+      });
+
+      // Special parse for "All properties" section
+      if (name === "All properties") {
+        const propMatches = [...body.matchAll(/Property:(0x[0-9a-fA-F]+),\s*Property name:([^,]+),\s*access:(0x\w+),\s*changeMode:(0x\w+)/g)];
+        if (propMatches.length > 0) {
+          props["_properties"] = propMatches.map(m => ({
+            id: m[1], name: m[2].trim(), access: m[3], changeMode: m[4]
+          }));
+        }
+      }
+
+      // Special parse for "All Events" section
+      if (name.startsWith("All Events")) {
+        const evMatches = [...body.matchAll(/lastEvent:Property:(0x[0-9a-fA-F]+),status:\s*(\d+).*?int32Values:\s*\[([^\]]*)\]/g)];
+        if (evMatches.length > 0) {
+          props["_events"] = evMatches.map(m => ({
+            id: m[1], status: m[2], int32: m[3].trim()
+          }));
+        }
+      }
+
+      sections[name] = props;
+    });
+
+    res.writeHead(200);
+    res.end(JSON.stringify({ success: true, sections, sectionNames: Object.keys(sections) }));
+    return;
+  }
+
   // ── POST /stop — gracefully stop the server from the UI ──
   if (req.method === "POST" && pathname === "/stop") {
     res.writeHead(200);

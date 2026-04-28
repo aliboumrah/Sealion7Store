@@ -453,6 +453,7 @@
   <div class="tab" data-tab="termux">📟 Termux</div>
   <div class="tab" data-tab="apk">🏪 App Store</div>
   <div class="tab" data-tab="packages">📋 Packages</div>
+  <div class="tab" data-tab="carservice">🚗 Car Service</div>
   <div class="tab" data-tab="shell">⌨ Shell</div>
 </div>
 
@@ -497,6 +498,28 @@
       <div style="color:var(--muted);font-size:12px;padding:20px;text-align:center;">Click ⟳ Refresh to load packages</div>
     </div>
 
+  </div>
+
+  <!-- Car Service pane -->
+  <div id="carservice-pane" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);">
+
+    <!-- Toolbar -->
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;">
+      <input id="cs-search" type="text" placeholder="Search sections or properties…"
+        style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;"/>
+      <button id="cs-refresh-btn" class="hdr-btn">⟳ Refresh</button>
+      <span id="cs-status" style="font-size:11px;color:var(--muted);white-space:nowrap;font-family:var(--mono);"></span>
+    </div>
+
+    <div style="display:flex;flex:1;overflow:hidden;">
+      <!-- Section list sidebar -->
+      <div id="cs-sidebar" style="width:200px;flex-shrink:0;overflow-y:auto;border-right:1px solid var(--border2);background:var(--surface);scrollbar-width:thin;scrollbar-color:var(--border) transparent;"></div>
+
+      <!-- Section detail -->
+      <div id="cs-detail" style="flex:1;overflow-y:auto;padding:16px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;">
+        <div style="color:var(--muted);font-size:12px;text-align:center;padding:30px;">Click ⟳ Refresh to load car service data</div>
+      </div>
+    </div>
   </div>
 
   <!-- Shell pane -->
@@ -758,7 +781,7 @@ const histList  = document.getElementById("history-list");
 let cmdHistory = [], histIdx = -1;
 
 // ── Tabs ──
-const panes = { linux: document.getElementById("linux-pane"), termux: document.getElementById("termux-pane"), apk: document.getElementById("apk-pane"), packages: document.getElementById("packages-pane"), shell: document.getElementById("terminal-pane") };
+const panes = { linux: document.getElementById("linux-pane"), termux: document.getElementById("termux-pane"), apk: document.getElementById("apk-pane"), packages: document.getElementById("packages-pane"), carservice: document.getElementById("carservice-pane"), shell: document.getElementById("terminal-pane") };
 let allPackages = [];
 const quickBar = document.getElementById("quick-bar");
 document.querySelectorAll(".tab").forEach(tab => {
@@ -768,6 +791,7 @@ document.querySelectorAll(".tab").forEach(tab => {
     const t = tab.dataset.tab;
     switchTab(t);
     if (t === "packages" && allPackages.length === 0) loadPackages();
+    if (t === "carservice" && !csData) loadCarService();
   });
 });
 
@@ -1417,6 +1441,125 @@ async function pullApk(pkg, btn) {
 document.getElementById("pkg-refresh-btn").addEventListener("click", loadPackages);
 document.getElementById("pkg-search").addEventListener("input", renderPackages);
 document.getElementById("pkg-filter").addEventListener("change", loadPackages);
+
+// ── Car Service tab ──
+let csData = null;
+let csActiveSectionName = null;
+
+async function loadCarService() {
+  const serial = deviceSel.value || null;
+  const status = document.getElementById("cs-status");
+  const sidebar = document.getElementById("cs-sidebar");
+  const detail = document.getElementById("cs-detail");
+  status.textContent = "Loading…";
+  sidebar.innerHTML = `<div style="color:var(--muted);font-size:11px;padding:12px;"><span class="spinner">⟳</span> Running dumpsys car_service…</div>`;
+  detail.innerHTML = "";
+
+  try {
+    const url = serial ? `${SERVER}/carservice?serial=${encodeURIComponent(serial)}` : `${SERVER}/carservice`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.raw || "Failed");
+    csData = data;
+    status.textContent = `${data.sectionNames.length} sections · ${new Date().toLocaleTimeString()}`;
+    renderCsSidebar();
+    if (data.sectionNames.length > 0) {
+      renderCsSection(data.sectionNames[0]);
+    }
+  } catch(e) {
+    status.textContent = "Error";
+    detail.innerHTML = `<div style="color:var(--red);font-size:12px;padding:16px;">✗ ${e.message}</div>`;
+    sidebar.innerHTML = "";
+  }
+}
+
+function renderCsSidebar() {
+  if (!csData) return;
+  const sidebar = document.getElementById("cs-sidebar");
+  const search = document.getElementById("cs-search").value.toLowerCase();
+  const names = csData.sectionNames.filter(n => !search || n.toLowerCase().includes(search));
+  sidebar.innerHTML = "";
+  names.forEach(name => {
+    const item = document.createElement("div");
+    item.style.cssText = `padding:8px 12px;font-size:11px;cursor:pointer;border-bottom:1px solid var(--border2);color:${name === csActiveSectionName ? "var(--accent)" : "var(--muted)"};background:${name === csActiveSectionName ? "var(--accent-dim)" : ""};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all .1s;`;
+    item.title = name;
+    item.textContent = name;
+    item.onclick = () => { csActiveSectionName = name; renderCsSidebar(); renderCsSection(name); };
+    item.onmouseenter = () => { if (name !== csActiveSectionName) item.style.color = "var(--text)"; };
+    item.onmouseleave = () => { if (name !== csActiveSectionName) item.style.color = "var(--muted)"; };
+    sidebar.appendChild(item);
+  });
+}
+
+function renderCsSection(name) {
+  csActiveSectionName = name;
+  const detail = document.getElementById("cs-detail");
+  const section = csData && csData.sections[name];
+  if (!section) { detail.innerHTML = `<div style="color:var(--muted);font-size:12px;">No data</div>`; return; }
+
+  const search = document.getElementById("cs-search").value.toLowerCase();
+  let html2 = `<div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;letter-spacing:0.04em;">${name}</div>`;
+
+  // Special: properties list
+  if (section._properties) {
+    const props = search ? section._properties.filter(p => p.name.toLowerCase().includes(search) || p.id.includes(search)) : section._properties;
+    html2 += `<div style="font-size:10px;color:var(--muted);margin-bottom:8px;">${props.length} properties</div>`;
+    html2 += `<div style="display:flex;flex-direction:column;gap:4px;">`;
+    props.forEach(p => {
+      const accessLabel = p.access === "0x1" ? "R" : p.access === "0x2" ? "W" : "R/W";
+      html2 += `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;">
+        <span style="font-size:10px;color:var(--muted);font-family:var(--mono);flex-shrink:0;">${p.id}</span>
+        <span style="flex:1;font-size:11px;color:var(--text);font-family:var(--mono);word-break:break-all;">${p.name.replace(/_/g,' ')}</span>
+        <span style="font-size:9px;padding:1px 6px;border-radius:4px;background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent);flex-shrink:0;">${accessLabel}</span>
+      </div>`;
+    });
+    html2 += `</div>`;
+  }
+  // Special: events list
+  else if (section._events) {
+    const events = search ? section._events.filter(e => e.id.includes(search) || e.int32.includes(search)) : section._events;
+    html2 += `<div style="font-size:10px;color:var(--muted);margin-bottom:8px;">${events.length} events</div>`;
+    html2 += `<div style="display:flex;flex-direction:column;gap:4px;">`;
+    events.forEach(e => {
+      html2 += `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;">
+        <span style="font-size:10px;color:var(--muted);font-family:var(--mono);flex-shrink:0;">${e.id}</span>
+        <span style="flex:1;font-size:12px;color:var(--text);font-family:var(--mono);">${e.int32 || "-"}</span>
+        <span style="font-size:9px;color:${e.status === "0" ? "var(--green)" : "var(--red)"};">${e.status === "0" ? "OK" : "ERR"}</span>
+      </div>`;
+    });
+    html2 += `</div>`;
+  }
+  // Key-value pairs
+  else {
+    const entries = Object.entries(section).filter(([k]) => k !== "_lines");
+    const filtered = search ? entries.filter(([k,v]) => k.toLowerCase().includes(search) || String(v).toLowerCase().includes(search)) : entries;
+    if (filtered.length > 0) {
+      html2 += `<div style="display:flex;flex-direction:column;gap:4px;">`;
+      filtered.forEach(([k, v]) => {
+        html2 += `<div style="display:flex;gap:10px;padding:7px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;">
+          <span style="font-size:11px;color:var(--muted);font-family:var(--mono);min-width:160px;flex-shrink:0;word-break:break-all;">${k}</span>
+          <span style="flex:1;font-size:12px;color:var(--text);font-family:var(--mono);word-break:break-all;">${v}</span>
+        </div>`;
+      });
+      html2 += `</div>`;
+    }
+    // Plain lines
+    if (section._lines && section._lines.length > 0) {
+      const lines = search ? section._lines.filter(l => l.toLowerCase().includes(search)) : section._lines;
+      if (lines.length > 0) {
+        html2 += `<pre style="margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:pre-wrap;word-break:break-all;background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:10px;">${lines.join("\n")}</pre>`;
+      }
+    }
+  }
+
+  detail.innerHTML = html2;
+}
+
+document.getElementById("cs-refresh-btn").addEventListener("click", loadCarService);
+document.getElementById("cs-search").addEventListener("input", () => {
+  renderCsSidebar();
+  if (csActiveSectionName) renderCsSection(csActiveSectionName);
+});
 
 // ── Init ──
 serverUrlInput.value = SERVER;
