@@ -1631,7 +1631,7 @@ function renderCsDashboard() {
     card.onmouseleave = () => card.style.borderColor = "var(--border)";
     card.onclick = () => {
       const el = document.getElementById("cs-search");
-      if (el) { el.value = cfg.key; renderCsList(); }
+      if (el) { el.value = cfg.id; renderCsList(); }
     };
     // Special display for charging/discharge status
     let displayVal = display;
@@ -1643,7 +1643,7 @@ function renderCsDashboard() {
       const dischargeState = dischargeProp !== undefined
         ? (Array.isArray(dischargeProp.value) ? dischargeProp.value[0] : dischargeProp.value)
         : null;
-      const isDischarging = dischargeState === 3;
+      const isDischarging = Number(dischargeState) === 3;
       if (isDischarging) {
         // DISCHARGE_STATE=3 → show as discharging
         displayVal = chargePower > 0 ? (chargePower/1000).toFixed(2) : "ON";
