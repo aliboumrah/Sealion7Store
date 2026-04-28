@@ -331,12 +331,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Parse UTF-16LE or plain text output
-    let text = result.output;
+    const text = result.output;
 
     // Split into sections by *SectionName*
-    const sectionRegex = /\*([^*
-]+)\*/g;
+    const sectionRegex = new RegExp("[*]([^*\r\n]+)[*]", "g");
     const sectionMatches = [...text.matchAll(sectionRegex)];
     const sections = {};
 
@@ -346,27 +344,31 @@ const server = http.createServer(async (req, res) => {
       const end = idx + 1 < sectionMatches.length ? sectionMatches[idx + 1].index : text.length;
       const body = text.slice(start, end).trim();
 
-      // Parse key:value pairs from body
       const props = {};
-      const lines = body.split(/?
-/);
+      const lines = body.split("\n");
       lines.forEach(line => {
-        line = line.trim();
+        line = line.replace(/\r/g, "").trim();
         if (!line) return;
-        // Match "key: value" or "key:value"
-        const kv = line.match(/^([^:]+?)\s*:\s*(.*)$/);
-        if (kv) {
-          props[kv[1].trim()] = kv[2].trim();
+        const colonIdx = line.indexOf(":");
+        if (colonIdx > 0 && colonIdx < line.length - 1) {
+          const k = line.slice(0, colonIdx).trim();
+          const v = line.slice(colonIdx + 1).trim();
+          if (k && !k.includes(" ")) {
+            props[k] = v;
+          } else {
+            if (!props["_lines"]) props["_lines"] = [];
+            props["_lines"].push(line);
+          }
         } else {
-          // Store as plain line
           if (!props["_lines"]) props["_lines"] = [];
           props["_lines"].push(line);
         }
       });
 
-      // Special parse for "All properties" section
+      // Special: All properties section
       if (name === "All properties") {
-        const propMatches = [...body.matchAll(/Property:(0x[0-9a-fA-F]+),\s*Property name:([^,]+),\s*access:(0x\w+),\s*changeMode:(0x\w+)/g)];
+        const propRe = new RegExp("Property:(0x[0-9a-fA-F]+),\\s*Property name:([^,]+),\\s*access:(0x\\w+),\\s*changeMode:(0x\\w+)", "g");
+        const propMatches = [...body.matchAll(propRe)];
         if (propMatches.length > 0) {
           props["_properties"] = propMatches.map(m => ({
             id: m[1], name: m[2].trim(), access: m[3], changeMode: m[4]
@@ -374,9 +376,10 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      // Special parse for "All Events" section
+      // Special: All Events section
       if (name.startsWith("All Events")) {
-        const evMatches = [...body.matchAll(/lastEvent:Property:(0x[0-9a-fA-F]+),status:\s*(\d+).*?int32Values:\s*\[([^\]]*)\]/g)];
+        const evRe = new RegExp("lastEvent:Property:(0x[0-9a-fA-F]+),status:\\s*(\\d+).*?int32Values:\\s*\\[([^\\]]*)\\]", "g");
+        const evMatches = [...body.matchAll(evRe)];
         if (evMatches.length > 0) {
           props["_events"] = evMatches.map(m => ({
             id: m[1], status: m[2], int32: m[3].trim()
