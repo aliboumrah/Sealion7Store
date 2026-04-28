@@ -434,13 +434,21 @@ const server = http.createServer(async (req, res) => {
       const str    = m[7].trim();
       const name   = idToName[id] || id;
 
+      // Pick value: prefer floats if non-empty, else ints, else string
+      // Note: some properties like SOC are in int32Values only
       let value;
-      if (floats.length === 1)    value = floats[0];
-      else if (floats.length > 1) value = floats;
-      else if (ints.length === 1) value = ints[0];
-      else if (ints.length > 1)   value = ints;
-      else if (str)               value = str;
-      else                        value = null;
+      if (floats.length > 0 && floats.some(v => v !== 0)) {
+        value = floats.length === 1 ? floats[0] : floats;
+      } else if (ints.length > 0) {
+        value = ints.length === 1 ? ints[0] : ints;
+      } else if (floats.length > 0) {
+        // floats exist but all zero — still use them
+        value = floats.length === 1 ? floats[0] : floats;
+      } else if (str) {
+        value = str;
+      } else {
+        value = null;
+      }
 
       properties[id] = { id, name, value, status };
     }
