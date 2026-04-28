@@ -398,8 +398,7 @@ const server = http.createServer(async (req, res) => {
   // ── GET /properties — fetch live property values mapped to names ──
   if (req.method === "GET" && pathname === "/properties") {
     const serial = (parsed.query && parsed.query.serial) || null;
-    // Run dumpsys car_service and extract All Events section only
-    const result = await runAdb(["shell", "dumpsys car_service"], serial);
+    const result = await runAdb(["shell", "dumpsys", "car_service"], serial);
     if (!result.success) {
       res.writeHead(200);
       res.end(JSON.stringify({ success: false, properties: {} }));
@@ -407,52 +406,43 @@ const server = http.createServer(async (req, res) => {
     }
     const text = result.output;
 
-    // Extract All Events section
+    // Extract sections
     const evStart = text.indexOf("*All Events");
     const evEnd   = text.indexOf("*Property handlers*", evStart);
     const evBody  = evStart > -1 ? text.slice(evStart, evEnd > -1 ? evEnd : undefined) : "";
 
-    // Extract All Properties section for name mapping
     const prStart = text.indexOf("*All properties*");
     const prEnd   = text.indexOf("*All Events", prStart);
     const prBody  = prStart > -1 ? text.slice(prStart, prEnd > -1 ? prEnd : undefined) : "";
 
-    // Build id→name map from All Properties
+    // Build id→name map
     const idToName = {};
-    const propNameRe = new RegExp("Property:(0x[0-9a-fA-F]+),\s*Property name:([^,]+),", "g");
+    const propNameRe = /Property:(0x[0-9a-fA-F]+),\s*Property name:([^,]+),/g;
     for (const m of prBody.matchAll(propNameRe)) {
       idToName[m[1].toLowerCase()] = m[2].trim();
     }
 
-    // Parse events with values
-    const evRe = new RegExp(
-      "lastEvent:Property:(0x[0-9a-fA-F]+),status:\s*(\d+),timestamp:(\d+)," +
-      "zone:[^,]+,floatValues:\s*\[([^\]]*)\],int32Values:\s*\[([^\]]*)\]," +
-      "int64Values:\s*\[([^\]]*)\],bytes:\s*\[[^\]]*\],string:\s*([^\r\n]*)",
-      "g"
-    );
+    // Parse events
+    const evRe = /lastEvent:Property:(0x[0-9a-fA-F]+),status:\s*(\d+),timestamp:(\d+),zone:[^,]+,floatValues:\s*\[([^\]]*)\],int32Values:\s*\[([^\]]*)\],int64Values:\s*\[([^\]]*)\],bytes:\s*\[[^\]]*\],string:\s*([^\r\n]*)/g;
 
     const properties = {};
     for (const m of evBody.matchAll(evRe)) {
-      const id        = m[1].toLowerCase();
-      const status    = parseInt(m[2]);
-      const timestamp = m[3];
-      const floats    = m[4].trim().split(",").map(v => v.trim()).filter(Boolean).map(Number);
-      const ints      = m[5].trim().split(",").map(v => v.trim()).filter(Boolean).map(Number);
-      const int64s    = m[6].trim().split(",").map(v => v.trim()).filter(Boolean);
-      const str       = m[7].trim();
-      const name      = idToName[id] || id;
+      const id     = m[1].toLowerCase();
+      const status = parseInt(m[2]);
+      const floats = m[4].trim().split(",").map(v => v.trim()).filter(Boolean).map(Number);
+      const ints   = m[5].trim().split(",").map(v => v.trim()).filter(Boolean).map(Number);
+      const str    = m[7].trim();
+      const name   = idToName[id] || id;
 
-      // Pick best value to display
       let value;
-      if (floats.length === 1)      value = floats[0];
-      else if (floats.length > 1)   value = floats;
-      else if (ints.length === 1)   value = ints[0];
-      else if (ints.length > 1)     value = ints;
-      else if (str)                 value = str;
-      else                          value = null;
+      if (floats.length === 1)    value = floats[0];
+      else if (floats.length > 1) value = floats;
+      else if (ints.length === 1) value = ints[0];
+      else if (ints.length > 1)   value = ints;
+      else if (str)               value = str;
+      else                        value = null;
 
-      properties[id] = { id, name, value, status, timestamp };
+      properties[id] = { id, name, value, status };
     }
 
     res.writeHead(200);
