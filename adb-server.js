@@ -512,7 +512,7 @@ const server = http.createServer(async (req, res) => {
     const dischargeState = getPropValue("0x2140460e");        // DISCHARGE_STATE (3=discharging)
     const odometer       = getPropValue("0x21604409", true);  // TOTAL_MILEAGE_VALUER float=16865.1
     const acTemp         = getPropValue("0x21401023");        // AC_CONTROLLER_DRIVER_TEMP_SET int=22
-    const voltage        = getPropValue("0x2140460c");        // BATTERY_VOLTAGE int=13
+    // BATTERY_VOLTAGE 0x2140460c=13V is the 12V aux battery, not HV pack — not sent to ABRP
     const gear           = getPropValue("0x21403a0a");        // GEAR_R (1=P, 2=R, 3=N, 4=D)
     const soh            = getPropValue("0x21402037");        // BATTERY_HEALTH_STATUS_R int=100
 
@@ -534,7 +534,7 @@ const server = http.createServer(async (req, res) => {
     if (extTemp !== null)  tlm.ext_temp          = extTemp;
     if (acTemp !== null)   tlm.cabin_temp        = acTemp;
     if (odometer !== null) tlm.odometer          = parseFloat(odometer.toFixed(1));
-    if (voltage !== null)  tlm.voltage           = voltage;
+    // voltage not sent — 13V is aux battery, HV pack voltage not reliably available at idle
     if (soh !== null)      tlm.soh               = soh;
                            tlm.is_charging       = isChargingVal;
                            tlm.is_dcfc           = 0;  // Sealion 7 AC charging only via car_service
