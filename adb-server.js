@@ -47,7 +47,7 @@ function runAdb(args, serial) {
   return new Promise((resolve) => {
     const target = IS_TERMUX ? ADB_HOST : serial;
     const finalArgs = target ? ["-s", target, ...args] : args;
-    execFile("adb", finalArgs, { timeout: 60000 }, (err, stdout, stderr) => {
+    execFile("adb", finalArgs, { timeout: 60000, maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) resolve({ success: false, output: stderr || err.message });
       else     resolve({ success: true,  output: stdout });
     });
