@@ -504,43 +504,39 @@ const server = http.createServer(async (req, res) => {
 
     // Map property IDs — verified from actual dumpsys output
     const soc            = getPropValue("0x21604402", true);  // ELEC_PERCENTAGE_VALUER float=90.0
-    const evRange        = getPropValue("0x21404401");        // ELEC_DRIVING_RANGE_BY_STANDARD_R int=427km
-    const speed          = getPropValue("0x21604601", true);  // VEHICLE_SPEED float=0.0
-    const battKwh        = getPropValue("0x21604421", true);  // EV_REMAINING_BATTERY_POWER_R float=72.3
-    const extTemp        = getPropValue("0x21404604");        // ENVIRONMENT_TEMP int=23
-    const chargePower    = getPropValue("0x21603408", true);  // CHARGING_POWERR float=359.4 (W)
+    const speed          = getPropValue("0x21604601", true);  // VEHICLE_SPEED float km/h
+    const extTemp        = getPropValue("0x21404604");        // ENVIRONMENT_TEMP int °C
+    const chargePower    = getPropValue("0x21603408", true);  // CHARGING_POWERR float W
     const dischargeState = getPropValue("0x2140460e");        // DISCHARGE_STATE (3=discharging)
-    const odometer       = getPropValue("0x21604409", true);  // TOTAL_MILEAGE_VALUER float=16865.1
-    const acTemp         = getPropValue("0x21401023");        // AC_CONTROLLER_DRIVER_TEMP_SET int=22
-    // BATTERY_VOLTAGE 0x2140460c=13V is the 12V aux battery, not HV pack — not sent to ABRP
-    const gear           = getPropValue("0x21403a0a");        // GEAR_R (1=P, 2=R, 3=N, 4=D)
-    const soh            = getPropValue("0x21402037");        // BATTERY_HEALTH_STATUS_R int=100
+    const gear           = getPropValue("0x21403a0a");        // GEAR_R (1=P,2=R,3=N,4=D)
+    const soh            = getPropValue("0x21402037");        // BATTERY_HEALTH_STATUS_R int %
+    const hvVoltRear     = getPropValue("0x21407407");        // MOTOR_MCU_GENERATRIX_VOLT_REAR int
 
-    // Charging logic: DISCHARGE_STATE=3 means discharging
+    // Charging logic: DISCHARGE_STATE=3 = discharging
     const isDischarging  = Number(dischargeState) === 3;
     const powerKw        = chargePower !== null ? parseFloat((chargePower / 1000).toFixed(3)) : null;
     const isChargingVal  = (!isDischarging && powerKw !== null && powerKw > 0) ? 1 : 0;
-    const isParked       = gear === 1 ? 1 : 0;  // P gear
+    const isParked       = Number(gear) === 1 ? 1 : 0;
+
+    // HV voltage: MOTOR_MCU_GENERATRIX_VOLT_REAR — valid only when non-zero and != 65535
+    const hvVolt = (hvVoltRear !== null && hvVoltRear !== 65535 && hvVoltRear > 0)
+      ? hvVoltRear : null;
 
     // Build ABRP telemetry payload
-    // Full field reference: https://documenter.getpostman.com/view/7396339/SWTK5a8w
+    // Format: https://api.iternio.com/1/tlm/send?token=<TOKEN>&tlm=<JSON>
+    // Example: {"utc":1553807658,"soc":80.4,"soh":97.7,"speed":0,"is_charging":0,"power":13.2,"ext_temp":25,"car_model":"..."}
     const tlm = {
-      utc: Math.floor(Date.now() / 1000),
+      utc:        Math.floor(Date.now() / 1000),
+      car_model:  "byd:sealion:25:82:rwd",
     };
-    if (soc !== null)      tlm.soc               = parseFloat(soc.toFixed(1));
-    if (speed !== null)    tlm.speed             = parseFloat(speed.toFixed(1));
-    if (battKwh !== null)  tlm.kwh_charged       = parseFloat(battKwh.toFixed(2));
-    if (evRange !== null)  tlm.est_battery_range = evRange;
-    if (extTemp !== null)  tlm.ext_temp          = extTemp;
-    if (acTemp !== null)   tlm.cabin_temp        = acTemp;
-    if (odometer !== null) tlm.odometer          = parseFloat(odometer.toFixed(1));
-    // voltage not sent — 13V is aux battery, HV pack voltage not reliably available at idle
-    if (soh !== null)      tlm.soh               = soh;
-                           tlm.is_charging       = isChargingVal;
-                           tlm.is_dcfc           = 0;  // Sealion 7 AC charging only via car_service
-                           tlm.is_parked         = isParked;
-    if (powerKw !== null)  tlm.power             = isChargingVal ? powerKw : -Math.abs(powerKw);
-                           tlm.tlm_type          = "Sealion7-ADB-Shell";
+    if (soc !== null)      tlm.soc         = parseFloat(soc.toFixed(1));
+    if (soh !== null)      tlm.soh         = soh;
+    if (speed !== null)    tlm.speed       = parseFloat(speed.toFixed(1));
+    if (extTemp !== null)  tlm.ext_temp    = extTemp;
+    if (hvVolt !== null)   tlm.voltage     = hvVolt;
+                           tlm.is_charging = isChargingVal;
+                           tlm.is_dcfc     = 0;
+    if (powerKw !== null)  tlm.power       = isChargingVal ? powerKw : -Math.abs(powerKw);
 
     // Push to ABRP API
     const https = require("https");
