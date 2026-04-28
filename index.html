@@ -1575,7 +1575,7 @@ let csLiveRunning = false;
 
 // Key properties — matched by property_id for reliability
 const CS_DASHBOARD_PROPS = [
-  { id: "0x21404622", label: "SOC",           unit: "%",    icon: "🔋" }, // SOC_VALUER=90
+  { id: "0x21604402", label: "SOC",           unit: "%",    icon: "🔋" }, // ELEC_PERCENTAGE_VALUER=90.0
   { id: "0x21604421", label: "EV kWh",        unit: "kWh",  icon: "⚡" }, // EV_REMAINING_BATTERY_POWER_R=72.3
   { id: "0x21604601", label: "Speed",         unit: "km/h", icon: "🚗" }, // VEHICLE_SPEED=0.0
   { id: "0x21404401", label: "EV Range",      unit: "km",   icon: "📍" }, // ELEC_DRIVING_RANGE_BY_STANDARD_R=427
@@ -1589,6 +1589,8 @@ const CS_DASHBOARD_PROPS = [
   { id: "0x2160801e", label: "Tyre FR",       unit: "psi",  icon: "🔵" }, // RIGHTFRONTTIREPRESSURE=28.0
   { id: "0x2160801f", label: "Tyre RL",       unit: "psi",  icon: "🔵" }, // LEFTREARTIREPRESSURE=27.0
   { id: "0x21608020", label: "Tyre RR",       unit: "psi",  icon: "🔵" }, // RIGHTREARTIREPRESSURE=27.0
+  { id: "0x21601421", label: "Last 50km",     unit: "kWh/km",icon: "📊" }, // LAST50_K_M_ELECTRIC_CON_AVG=16.0
+  { id: "0x21604405", label: "Avg Consump",   unit: "kWh",  icon: "⚡" }, // TOTAL_ELEC_CON_P_H_M_VALUER=17.5
 ];
 
 async function loadCarService() {
