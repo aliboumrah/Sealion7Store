@@ -458,6 +458,85 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── POST /abrp — push live data to ABRP ──
+  if (req.method === "POST" && pathname === "/abrp") {
+    const body = await parseBody(req);
+    const { token, serial } = body;
+    if (!token) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ success: false, output: "Missing ABRP token" }));
+      return;
+    }
+
+    // Fetch live properties from car_service
+    const result = await runAdb(["shell", "dumpsys", "car_service"], serial);
+    if (!result.success) {
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: false, output: "Failed to read car_service" }));
+      return;
+    }
+    const text = result.output;
+
+    // Extract All Events section
+    const evStart = text.indexOf("*All Events");
+    const evEnd   = text.indexOf("*Property handlers*", evStart);
+    const evBody  = evStart > -1 ? text.slice(evStart, evEnd > -1 ? evEnd : undefined) : "";
+
+    // Helper: extract a property value by ID from All Events
+    function getPropValue(hexId, preferFloat = false) {
+      const re = new RegExp(
+        "lastEvent:Property:" + hexId + ",status:\\s*\\d+,timestamp:\\d+," +
+        "zone:[^,]+,floatValues:\\s*\\[([^\\]]*)\\],int32Values:\\s*\\[([^\\]]*)\\]",
+        "i"
+      );
+      const m = evBody.match(re);
+      if (!m) return null;
+      const floats = m[1].trim().split(",").map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+      const ints   = m[2].trim().split(",").map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+      if (preferFloat && floats.length > 0) return floats[0];
+      if (ints.length > 0 && !preferFloat) return ints[0];
+      if (floats.length > 0) return floats[0];
+      return null;
+    }
+
+    // Map known property IDs
+    const soc          = getPropValue("0x21404622");          // SOC_VALUER (int32)
+    const evRange      = getPropValue("0x21404401");          // ELEC_DRIVING_RANGE_BY_STANDARD_R (int32, km)
+    const speed        = getPropValue("0x21604601", true);    // VEHICLE_SPEED (float)
+    const battKwh      = getPropValue("0x21604421", true);    // EV_REMAINING_BATTERY_POWER_R (float)
+    const extTemp      = getPropValue("0x21404604");          // ENVIRONMENT_TEMP (int32)
+    const isCharging   = getPropValue("0x21403406");          // CHARGER_STATER (0=not charging)
+
+    // Build ABRP telemetry payload
+    const tlm = {};
+    if (soc !== null)        tlm.soc = soc;
+    if (evRange !== null)    tlm.est_battery_range = evRange;
+    if (speed !== null)      tlm.speed = speed;
+    if (battKwh !== null)    tlm.kwh_charged = battKwh;
+    if (extTemp !== null)    tlm.ext_temp = extTemp;
+    if (isCharging !== null) tlm.is_charging = isCharging > 0 ? 1 : 0;
+    tlm.utc = Math.floor(Date.now() / 1000);
+
+    // Push to ABRP API
+    const https = require("https");
+    const apiUrl = `https://api.iternio.com/1/tlm/send?token=${encodeURIComponent(token)}&tlm=${encodeURIComponent(JSON.stringify(tlm))}`;
+
+    const abrpResult = await new Promise((resolve) => {
+      https.get(apiUrl, { headers: { "User-Agent": "Sealion7-ADB-Shell" } }, (r) => {
+        let data = "";
+        r.on("data", c => data += c);
+        r.on("end", () => {
+          try { resolve({ success: true, output: JSON.parse(data), tlm }); }
+          catch { resolve({ success: true, output: data, tlm }); }
+        });
+      }).on("error", e => resolve({ success: false, output: e.message, tlm }));
+    });
+
+    res.writeHead(200);
+    res.end(JSON.stringify(abrpResult));
+    return;
+  }
+
   // ── POST /stop — gracefully stop the server from the UI ──
   if (req.method === "POST" && pathname === "/stop") {
     res.writeHead(200);

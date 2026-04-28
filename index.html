@@ -515,6 +515,7 @@
       </select>
       <button id="cs-refresh-btn" class="hdr-btn">⟳ Refresh</button>
       <button id="cs-live-btn" class="hdr-btn" style="color:var(--green);">▶ Live</button>
+      <button id="cs-restart-btn" class="hdr-btn" style="color:var(--yellow);" title="Restart car_service daemon">↺ Restart</button>
       <span id="cs-status" style="font-size:11px;color:var(--muted);white-space:nowrap;font-family:var(--mono);"></span>
     </div>
 
@@ -1707,6 +1708,43 @@ document.getElementById("cs-live-btn").addEventListener("click", () => {
 document.getElementById("cs-refresh-btn").addEventListener("click", loadCarService);
 document.getElementById("cs-search").addEventListener("input", renderCsList);
 document.getElementById("cs-filter").addEventListener("change", renderCsList);
+
+// ── Restart car_service daemon ──
+document.getElementById("cs-restart-btn").addEventListener("click", async () => {
+  const btn    = document.getElementById("cs-restart-btn");
+  const status = document.getElementById("cs-status");
+  if (!confirm("Restart car_service daemon? This may briefly affect infotainment functions.")) return;
+  btn.disabled = true;
+  btn.textContent = "↺ Restarting…";
+  status.textContent = "Restarting car_service…";
+  status.style.color = "var(--yellow)";
+  try {
+    const serial = deviceSel.value || null;
+    const res  = await fetch(`${SERVER}/shell`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: "stop car_service && start car_service", serial })
+    });
+    const data = await res.json();
+    if (data.success) {
+      status.textContent = "✓ car_service restarted — reloading in 3s…";
+      status.style.color = "var(--green)";
+      setTimeout(() => {
+        status.style.color = "var(--muted)";
+        loadCarService();
+      }, 3000);
+    } else {
+      status.textContent = "✗ " + data.output;
+      status.style.color = "var(--red)";
+    }
+  } catch(e) {
+    status.textContent = "✗ " + e.message;
+    status.style.color = "var(--red)";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "↺ Restart";
+  }
+});
 
 
 
