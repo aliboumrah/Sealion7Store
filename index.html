@@ -1523,25 +1523,22 @@ let csProperties = {};
 let csLiveInterval = null;
 let csLiveRunning = false;
 
-// Key properties to show in dashboard
+// Key properties — matched by property_id for reliability
 const CS_DASHBOARD_PROPS = [
-  { key: "SOC_VALUER",                        label: "Battery SOC",   unit: "%",   icon: "🔋" },
-  { key: "REMAINING_BATTERY_POWER_R",         label: "Battery kWh",   unit: "kWh", icon: "⚡" },
-  { key: "VEHICLE_SPEED",                     label: "Speed",         unit: "km/h",icon: "🚗" },
-  { key: "ELEC_DRIVING_RANGE_BY_STANDARD_R",  label: "EV Range",      unit: "km",  icon: "📍" },
-  { key: "TOTAL_MILEAGE_VALUER",              label: "Odometer",      unit: "km",  icon: "🛣" },
-  { key: "ENVIRONMENT_TEMP",                  label: "Ext. Temp",     unit: "°C",  icon: "🌡" },
-  { key: "SPORT_MODE_STATE",                  label: "Sport Mode",    unit: "",    icon: "⚡" },
-  { key: "CHARGING_POWERR",                   label: "Charge Power",  unit: "W",   icon: "🔌" },
-  { key: "AC_CONTROLLER_DRIVER_TEMP_SET",     label: "AC Temp",       unit: "°C",  icon: "❄️" },
-  { key: "LEFTFRONTTIREPRESSURE",             label: "Tyre FL",       unit: "psi", icon: "🔵" },
-  { key: "RIGHTFRONTTIREPRESSURE",            label: "Tyre FR",       unit: "psi", icon: "🔵" },
-  { key: "LEFTREARTIREPRESSURE",              label: "Tyre RL",       unit: "psi", icon: "🔵" },
-  { key: "RIGHTREARTIREPRESSURE",             label: "Tyre RR",       unit: "psi", icon: "🔵" },
+  { id: "0x21404622", label: "Battery SOC",   unit: "%",    icon: "🔋" },
+  { id: "0x21604420", label: "Battery kWh",   unit: "kWh",  icon: "⚡" },
+  { id: "0x21604601", label: "Speed",         unit: "km/h", icon: "🚗" },
+  { id: "0x21404401", label: "EV Range",      unit: "km",   icon: "📍" },
+  { id: "0x21604409", label: "Odometer",      unit: "km",   icon: "🛣" },
+  { id: "0x21404604", label: "Ext. Temp",     unit: "°C",   icon: "🌡" },
+  { id: "0x21403974", label: "Sport Mode",    unit: "",     icon: "🏎" },
+  { id: "0x21603408", label: "Charge Power",  unit: "W",    icon: "🔌" },
+  { id: "0x21401023", label: "AC Temp",       unit: "°C",   icon: "❄️" },
+  { id: "0x2160801d", label: "Tyre FL",       unit: "psi",  icon: "🔵" },
+  { id: "0x2160801e", label: "Tyre FR",       unit: "psi",  icon: "🔵" },
+  { id: "0x2160801f", label: "Tyre RL",       unit: "psi",  icon: "🔵" },
+  { id: "0x21608020", label: "Tyre RR",       unit: "psi",  icon: "🔵" },
 ];
-
-// Build name→id lookup from dashboard list
-const CS_NAME_TO_ID = {};
 
 async function loadCarService() {
   const serial = deviceSel.value || null;
@@ -1570,12 +1567,9 @@ async function loadCarService() {
 function renderCsDashboard() {
   const dash = document.getElementById("cs-dashboard");
   dash.innerHTML = "";
-  // Find values by name
-  const byName = {};
-  Object.values(csProperties).forEach(p => { byName[p.name] = p; });
 
   CS_DASHBOARD_PROPS.forEach(cfg => {
-    const prop = byName[cfg.key] || Object.values(csProperties).find(p => p.name === cfg.key);
+    const prop = csProperties[cfg.id.toLowerCase()];
     const val  = prop ? (Array.isArray(prop.value) ? prop.value[0] : prop.value) : "—";
     const display = val !== null && val !== undefined && val !== "—"
       ? (typeof val === "number" ? (Number.isInteger(val) ? val : val.toFixed(1)) : val)
