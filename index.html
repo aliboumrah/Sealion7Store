@@ -1583,6 +1583,7 @@ const CS_DASHBOARD_PROPS = [
   { id: "0x21404604", label: "Ext Temp",      unit: "°C",   icon: "🌡" }, // ENVIRONMENT_TEMP=23
   { id: "0x21403974", label: "Sport",         unit: "",     icon: "🏎" }, // SPORT_MODE_STATE=1
   { id: "0x21603408", label: "Charge",        unit: "W",    icon: "🔌" }, // CHARGING_POWERR=359.4
+  { id: "0x2140460e", label: "Discharge",     unit: "",     icon: "🔋" }, // DISCHARGE_STATE=3
   { id: "0x21401023", label: "AC Temp",       unit: "°C",   icon: "❄️" }, // AC_CONTROLLER_DRIVER_TEMP_SET=22
   { id: "0x2160801d", label: "Tyre FL",       unit: "psi",  icon: "🔵" }, // LEFTFRONTTIREPRESSURE=28.0
   { id: "0x2160801e", label: "Tyre FR",       unit: "psi",  icon: "🔵" }, // RIGHTFRONTTIREPRESSURE=28.0
@@ -1632,9 +1633,38 @@ function renderCsDashboard() {
       const el = document.getElementById("cs-search");
       if (el) { el.value = cfg.key; renderCsList(); }
     };
+    // Special display for charging/discharge status
+    let displayVal = display;
+    let displayUnit = cfg.unit;
+    let cardColor = "var(--accent)";
+    if (cfg.id === "0x21603408") { // CHARGING_POWERR
+      const chargePower = val;
+      const dischargeProp = csProperties["0x2140460e"];
+      const dischargeState = dischargeProp ? (Array.isArray(dischargeProp.value) ? dischargeProp.value[0] : dischargeProp.value) : null;
+      if (chargePower > 0) {
+        displayVal = (chargePower/1000).toFixed(2);
+        displayUnit = "kW";
+        cardColor = "var(--green)";
+        cfg.icon = "⚡";
+        cfg.label = "Charging";
+      } else if (dischargeState === 1) {
+        displayVal = "ON";
+        displayUnit = "";
+        cardColor = "var(--yellow)";
+        cfg.icon = "🔋";
+        cfg.label = "Discharging";
+      } else {
+        displayVal = "OFF";
+        displayUnit = "";
+        cardColor = "var(--muted)";
+        cfg.label = "Charging";
+      }
+    }
+    if (cfg.id === "0x2140460e") return; // skip separate discharge card
+
     card.innerHTML = `
       <div style="font-size:16px;margin-bottom:2px;">${cfg.icon}</div>
-      <div style="font-size:15px;font-weight:700;color:var(--accent);font-family:var(--mono);">${display}${cfg.unit ? '<span style="font-size:10px;color:var(--muted);margin-left:2px;">'+cfg.unit+'</span>' : ""}</div>
+      <div style="font-size:15px;font-weight:700;color:${cardColor};font-family:var(--mono);">${displayVal}${displayUnit ? '<span style="font-size:10px;color:var(--muted);margin-left:2px;">'+displayUnit+'</span>' : ""}</div>
       <div style="font-size:9px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:0.06em;">${cfg.label}</div>
     `;
     dash.appendChild(card);
