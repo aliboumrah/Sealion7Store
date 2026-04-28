@@ -423,7 +423,8 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Parse events
-    const evRe = /lastEvent:Property:(0x[0-9a-fA-F]+),status:\s*(\d+),timestamp:(\d+),zone:[^,]+,floatValues:\s*\[([^\]]*)\],int32Values:\s*\[([^\]]*)\],int64Values:\s*\[([^\]]*)\],bytes:\s*\[[^\]]*\],string:\s*([^\r\n]*)/g;
+    // string field stops at comma or newline — handles inline entries like "string:  event count:5, lastEvent:..."
+    const evRe = /lastEvent:Property:(0x[0-9a-fA-F]+),status:\s*(\d+),timestamp:(\d+),zone:[^,]+,floatValues:\s*\[([^\]]*)\],int32Values:\s*\[([^\]]*)\],int64Values:\s*\[([^\]]*)\],bytes:\s*\[[^\]]*\],string:\s*([^,\r\n]*)/g;
 
     const properties = {};
     for (const m of evBody.matchAll(evRe)) {
