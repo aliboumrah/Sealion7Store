@@ -1640,23 +1640,30 @@ function renderCsDashboard() {
     if (cfg.id === "0x21603408") { // CHARGING_POWERR
       const chargePower = val;
       const dischargeProp = csProperties["0x2140460e"];
-      const dischargeState = dischargeProp ? (Array.isArray(dischargeProp.value) ? dischargeProp.value[0] : dischargeProp.value) : null;
-      if (chargePower > 0) {
+      const dischargeState = dischargeProp !== undefined
+        ? (Array.isArray(dischargeProp.value) ? dischargeProp.value[0] : dischargeProp.value)
+        : null;
+      const isDischarging = dischargeState === 3;
+      if (isDischarging) {
+        // DISCHARGE_STATE=3 → show as discharging
+        displayVal = chargePower > 0 ? (chargePower/1000).toFixed(2) : "ON";
+        displayUnit = chargePower > 0 ? "kW" : "";
+        cardColor = "var(--yellow)";
+        cfg.icon = "🔋";
+        cfg.label = "Discharging";
+      } else if (chargePower > 0) {
+        // Charging
         displayVal = (chargePower/1000).toFixed(2);
         displayUnit = "kW";
         cardColor = "var(--green)";
         cfg.icon = "⚡";
         cfg.label = "Charging";
-      } else if (dischargeState === 1) {
-        displayVal = "ON";
-        displayUnit = "";
-        cardColor = "var(--yellow)";
-        cfg.icon = "🔋";
-        cfg.label = "Discharging";
       } else {
-        displayVal = "OFF";
+        // Idle
+        displayVal = "Idle";
         displayUnit = "";
         cardColor = "var(--muted)";
+        cfg.icon = "🔌";
         cfg.label = "Charging";
       }
     }
