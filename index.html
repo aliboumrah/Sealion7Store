@@ -454,6 +454,7 @@
   <div class="tab" data-tab="apk">🏪 App Store</div>
   <div class="tab" data-tab="packages">📋 Packages</div>
   <div class="tab" data-tab="carservice">🚗 Car Service</div>
+  <div class="tab" data-tab="abrp">🗺 ABRP</div>
   <div class="tab" data-tab="shell">⌨ Shell</div>
 </div>
 
@@ -524,6 +525,54 @@
     <div id="cs-list" style="flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;">
       <div style="color:var(--muted);font-size:12px;text-align:center;padding:30px;">Click ⟳ Refresh to load live property values</div>
     </div>
+  </div>
+
+  <!-- ABRP pane -->
+  <div id="abrp-pane" style="display:none;flex:1;flex-direction:column;overflow-y:auto;padding:24px;background:var(--bg);gap:16px;scrollbar-width:thin;">
+
+    <div class="guide-hero" style="flex-shrink:0;">
+      <div class="guide-hero-icon">🗺</div>
+      <div>
+        <h1>ABRP Live Data</h1>
+        <p>Push live SOC, range and speed to <strong>A Better Route Planner</strong> automatically every few seconds.</p>
+      </div>
+    </div>
+
+    <!-- Token input -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;flex-shrink:0;">
+      <div class="apk-section-title">ABRP User Token</div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <input id="abrp-token" type="text" placeholder="Paste your ABRP token here…"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--accent);font-family:var(--mono);font-size:12px;outline:none;"/>
+        <button id="abrp-save-btn" class="install-btn" style="flex-shrink:0;">Save</button>
+      </div>
+      <div class="tip-box" style="margin-top:10px;">
+        <strong>How to get your token:</strong> Open ABRP → Settings → <strong>Live Data</strong> → Select <strong>Generic / Torque</strong> → Copy the token shown.
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;flex-shrink:0;">
+      <div class="apk-section-title">Live Sending</div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+        <button id="abrp-send-btn" class="install-btn">📡 Send Once</button>
+        <button id="abrp-live-btn" class="install-btn" style="background:var(--green-dim);border-color:var(--green);color:var(--green);">▶ Start Auto</button>
+        <select id="abrp-interval" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:8px;outline:none;">
+          <option value="5000">Every 5s</option>
+          <option value="10000" selected>Every 10s</option>
+          <option value="30000">Every 30s</option>
+          <option value="60000">Every 60s</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Last sent data -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;flex-shrink:0;">
+      <div class="apk-section-title">Last Sent Payload</div>
+      <div id="abrp-status" style="margin-top:8px;font-size:12px;color:var(--muted);"></div>
+      <div id="abrp-payload" style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--accent);background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:10px;display:none;white-space:pre;"></div>
+    </div>
+
   </div>
 
   <!-- Shell pane -->
@@ -785,7 +834,7 @@ const histList  = document.getElementById("history-list");
 let cmdHistory = [], histIdx = -1;
 
 // ── Tabs ──
-const panes = { linux: document.getElementById("linux-pane"), termux: document.getElementById("termux-pane"), apk: document.getElementById("apk-pane"), packages: document.getElementById("packages-pane"), carservice: document.getElementById("carservice-pane"), shell: document.getElementById("terminal-pane") };
+const panes = { linux: document.getElementById("linux-pane"), termux: document.getElementById("termux-pane"), apk: document.getElementById("apk-pane"), packages: document.getElementById("packages-pane"), carservice: document.getElementById("carservice-pane"), abrp: document.getElementById("abrp-pane"), shell: document.getElementById("terminal-pane") };
 let allPackages = [];
 const quickBar = document.getElementById("quick-bar");
 document.querySelectorAll(".tab").forEach(tab => {
@@ -1556,6 +1605,10 @@ async function loadCarService() {
     if (!data.success) throw new Error("Failed to load properties");
     csProperties = data.properties;
     status.textContent = `${data.count} properties · ${new Date().toLocaleTimeString()}`;
+    // Debug: log SOC property
+    const socProp = csProperties["0x21404622"];
+    console.log("SOC prop:", socProp);
+    console.log("All keys sample:", Object.keys(csProperties).slice(0,5));
     renderCsDashboard();
     renderCsList();
   } catch(e) {
@@ -1660,6 +1713,79 @@ document.getElementById("cs-search").addEventListener("input", renderCsList);
 document.getElementById("cs-filter").addEventListener("change", renderCsList);
 
 
+
+// ── ABRP tab ──
+let abrpToken = localStorage.getItem("abrpToken") || "";
+let abrpInterval = null;
+let abrpRunning = false;
+
+// Pre-fill token
+if (abrpToken) {
+  const inp = document.getElementById("abrp-token");
+  if (inp) inp.value = abrpToken;
+}
+
+document.getElementById("abrp-save-btn").addEventListener("click", () => {
+  abrpToken = document.getElementById("abrp-token").value.trim();
+  localStorage.setItem("abrpToken", abrpToken);
+  const btn = document.getElementById("abrp-save-btn");
+  btn.textContent = "✓ Saved";
+  setTimeout(() => btn.textContent = "Save", 1500);
+});
+
+async function abrpSend() {
+  const token = abrpToken || document.getElementById("abrp-token").value.trim();
+  if (!token) {
+    document.getElementById("abrp-status").innerHTML = `<span style="color:var(--red);">✗ Enter your ABRP token first</span>`;
+    return;
+  }
+  const serial = deviceSel.value || null;
+  const statusEl  = document.getElementById("abrp-status");
+  const payloadEl = document.getElementById("abrp-payload");
+  statusEl.innerHTML = `<span style="color:var(--muted);">⟳ Fetching car data…</span>`;
+
+  try {
+    const res  = await fetch(`${SERVER}/abrp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, serial })
+    });
+    const data = await res.json();
+    if (data.success) {
+      const tlm = data.tlm || {};
+      statusEl.innerHTML = `<span style="color:var(--green);">✓ Sent at ${new Date().toLocaleTimeString()}</span>`;
+      payloadEl.style.display = "block";
+      payloadEl.textContent = JSON.stringify(tlm, null, 2);
+    } else {
+      statusEl.innerHTML = `<span style="color:var(--red);">✗ ${data.output}</span>`;
+    }
+  } catch(e) {
+    statusEl.innerHTML = `<span style="color:var(--red);">✗ ${e.message}</span>`;
+  }
+}
+
+document.getElementById("abrp-send-btn").addEventListener("click", abrpSend);
+
+document.getElementById("abrp-live-btn").addEventListener("click", () => {
+  const btn = document.getElementById("abrp-live-btn");
+  if (abrpRunning) {
+    clearInterval(abrpInterval);
+    abrpRunning = false;
+    btn.textContent = "▶ Start Auto";
+    btn.style.background = "var(--green-dim)";
+    btn.style.borderColor = "var(--green)";
+    btn.style.color = "var(--green)";
+  } else {
+    abrpRunning = true;
+    btn.textContent = "⏹ Stop Auto";
+    btn.style.background = "var(--red-dim)";
+    btn.style.borderColor = "var(--red)";
+    btn.style.color = "var(--red)";
+    const ms = parseInt(document.getElementById("abrp-interval").value);
+    abrpSend();
+    abrpInterval = setInterval(abrpSend, ms);
+  }
+});
 
 // ── Init ──
 serverUrlInput.value = SERVER;
