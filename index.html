@@ -1591,6 +1591,7 @@ const CS_DASHBOARD_PROPS = [
   { id: "0x21608020", label: "Tyre RR",       unit: "psi",  icon: "🔵" }, // RIGHTREARTIREPRESSURE=27.0
   { id: "0x21601421", label: "Last 50km",     unit: "kWh/km",icon: "📊" }, // LAST50_K_M_ELECTRIC_CON_AVG=16.0
   { id: "0x21604405", label: "Avg Consump",   unit: "kWh",  icon: "⚡" }, // TOTAL_ELEC_CON_P_H_M_VALUER=17.5
+  { id: "0x21402037", label: "Battery SoH",   unit: "%",    icon: "🏥" }, // BATTERY_HEALTH_STATUS_R=100
 ];
 
 async function loadCarService() {
@@ -1625,7 +1626,7 @@ function renderCsDashboard() {
     const prop = csProperties[cfg.id.toLowerCase()];
     const val  = prop ? (Array.isArray(prop.value) ? prop.value[0] : prop.value) : "—";
     const display = val !== null && val !== undefined && val !== "—"
-      ? (typeof val === "number" ? (Number.isInteger(val) ? val : val.toFixed(1)) : val)
+      ? (typeof val === "number" ? (cfg.id === "0x21604402" ? val.toFixed(1) : (Number.isInteger(val) ? val : val.toFixed(1))) : val)
       : "—";
     const card = document.createElement("div");
     card.style.cssText = "background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;min-width:90px;text-align:center;cursor:pointer;transition:border-color .15s;";

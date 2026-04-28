@@ -488,9 +488,11 @@ const server = http.createServer(async (req, res) => {
       const re = new RegExp(
         "lastEvent:Property:" + hexId + ",status:\\s*\\d+,timestamp:\\d+," +
         "zone:[^,]+,floatValues:\\s*\\[([^\\]]*)\\],int32Values:\\s*\\[([^\\]]*)\\]",
-        "i"
+        "ig"
       );
-      const m = evBody.match(re);
+      // Use last match (most recent event)
+      let m = null, tmp;
+      while ((tmp = re.exec(evBody)) !== null) m = tmp;
       if (!m) return null;
       const floats = m[1].trim().split(",").map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
       const ints   = m[2].trim().split(",").map(v => parseInt(v.trim())).filter(v => !isNaN(v));
@@ -500,23 +502,45 @@ const server = http.createServer(async (req, res) => {
       return null;
     }
 
-    // Map known property IDs
-    const soc          = getPropValue("0x21404622");          // SOC_VALUER (int32)
-    const evRange      = getPropValue("0x21404401");          // ELEC_DRIVING_RANGE_BY_STANDARD_R (int32, km)
-    const speed        = getPropValue("0x21604601", true);    // VEHICLE_SPEED (float)
-    const battKwh      = getPropValue("0x21604421", true);    // EV_REMAINING_BATTERY_POWER_R (float)
-    const extTemp      = getPropValue("0x21404604");          // ENVIRONMENT_TEMP (int32)
-    const isCharging   = getPropValue("0x21403406");          // CHARGER_STATER (0=not charging)
+    // Map property IDs — verified from actual dumpsys output
+    const soc            = getPropValue("0x21604402", true);  // ELEC_PERCENTAGE_VALUER float=90.0
+    const evRange        = getPropValue("0x21404401");        // ELEC_DRIVING_RANGE_BY_STANDARD_R int=427km
+    const speed          = getPropValue("0x21604601", true);  // VEHICLE_SPEED float=0.0
+    const battKwh        = getPropValue("0x21604421", true);  // EV_REMAINING_BATTERY_POWER_R float=72.3
+    const extTemp        = getPropValue("0x21404604");        // ENVIRONMENT_TEMP int=23
+    const chargePower    = getPropValue("0x21603408", true);  // CHARGING_POWERR float=359.4 (W)
+    const dischargeState = getPropValue("0x2140460e");        // DISCHARGE_STATE (3=discharging)
+    const odometer       = getPropValue("0x21604409", true);  // TOTAL_MILEAGE_VALUER float=16865.1
+    const acTemp         = getPropValue("0x21401023");        // AC_CONTROLLER_DRIVER_TEMP_SET int=22
+    const voltage        = getPropValue("0x2140460c");        // BATTERY_VOLTAGE int=13
+    const gear           = getPropValue("0x21403a0a");        // GEAR_R (1=P, 2=R, 3=N, 4=D)
+    const soh            = getPropValue("0x21402037");        // BATTERY_HEALTH_STATUS_R int=100
+
+    // Charging logic: DISCHARGE_STATE=3 means discharging
+    const isDischarging  = Number(dischargeState) === 3;
+    const powerKw        = chargePower !== null ? parseFloat((chargePower / 1000).toFixed(3)) : null;
+    const isChargingVal  = (!isDischarging && powerKw !== null && powerKw > 0) ? 1 : 0;
+    const isParked       = gear === 1 ? 1 : 0;  // P gear
 
     // Build ABRP telemetry payload
-    const tlm = {};
-    if (soc !== null)        tlm.soc = soc;
-    if (evRange !== null)    tlm.est_battery_range = evRange;
-    if (speed !== null)      tlm.speed = speed;
-    if (battKwh !== null)    tlm.kwh_charged = battKwh;
-    if (extTemp !== null)    tlm.ext_temp = extTemp;
-    if (isCharging !== null) tlm.is_charging = isCharging > 0 ? 1 : 0;
-    tlm.utc = Math.floor(Date.now() / 1000);
+    // Full field reference: https://documenter.getpostman.com/view/7396339/SWTK5a8w
+    const tlm = {
+      utc: Math.floor(Date.now() / 1000),
+    };
+    if (soc !== null)      tlm.soc               = parseFloat(soc.toFixed(1));
+    if (speed !== null)    tlm.speed             = parseFloat(speed.toFixed(1));
+    if (battKwh !== null)  tlm.kwh_charged       = parseFloat(battKwh.toFixed(2));
+    if (evRange !== null)  tlm.est_battery_range = evRange;
+    if (extTemp !== null)  tlm.ext_temp          = extTemp;
+    if (acTemp !== null)   tlm.cabin_temp        = acTemp;
+    if (odometer !== null) tlm.odometer          = parseFloat(odometer.toFixed(1));
+    if (voltage !== null)  tlm.voltage           = voltage;
+    if (soh !== null)      tlm.soh               = soh;
+                           tlm.is_charging       = isChargingVal;
+                           tlm.is_dcfc           = 0;  // Sealion 7 AC charging only via car_service
+                           tlm.is_parked         = isParked;
+    if (powerKw !== null)  tlm.power             = isChargingVal ? powerKw : -Math.abs(powerKw);
+                           tlm.tlm_type          = "Sealion7-ADB-Shell";
 
     // Push to ABRP API
     const https = require("https");
