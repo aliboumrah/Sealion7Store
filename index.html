@@ -2276,53 +2276,66 @@ document.getElementById("nav-clear-btn").addEventListener("click", () => {
 });
 
 // ── AI: extract destination and search ──
+function navExtractDestination(text) {
+  // Extract destination from natural language
+  const patterns = [
+    /(?:go to|navigate to|take me to|drive to|directions? to|route to|i want to go to|head to|open|find)\s+(.+)/i,
+    /(?:how do i get to|how to get to|get me to)\s+(.+)/i,
+    /(?:where is|find)\s+(.+)/i,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) return m[1].trim().replace(/[?.!]$/, "");
+  }
+  // If no pattern, use the full text as destination
+  return text.trim().replace(/[?.!]$/, "");
+}
+
 async function navProcessSpeech(text) {
-  navStatus.innerHTML = `<span style="color:var(--muted);">⟳ AI processing: "${text}"</span>`;
+  navSetStatus(`⟳ Searching for "${text}"…`);
   navSuggestions.innerHTML = "";
 
+  const destination = navExtractDestination(text);
+  navSetStatus(`⟳ Looking up "${destination}"…`);
+
+  // Try server-side search first (avoids CORS on car browser)
+  // then fallback to direct fetch
+  let places = null;
+
   try {
-    // Call Claude via Anthropic API to extract destination
-    const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 200,
-        system: "You are a navigation assistant in a car. Extract the destination from what the user says. Reply with ONLY a JSON object: {\"destination\": \"<place name>\", \"query\": \"<search query for geocoding>\"}. If no destination, reply {\"destination\": null}.",
-        messages: [{ role: "user", content: text }]
-      })
-    });
-    const aiData = await aiRes.json();
-    const raw = aiData.content?.[0]?.text || "{}";
-    let parsed;
-    try { parsed = JSON.parse(raw.replace(/```json|```/g, "").trim()); }
-    catch { parsed = {}; }
-
-    if (!parsed.destination) {
-      navStatus.innerHTML = `<span style="color:var(--yellow);">⚠ Couldn't find a destination in: "${text}". Try saying "I want to go to [place]".</span>`;
-      return;
-    }
-
-    navStatus.innerHTML = `<span style="color:var(--muted);">⟳ Searching for "${parsed.destination}"…</span>`;
-
-    // Search with Nominatim (OpenStreetMap) — free, no API key
-    const searchRes = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(parsed.query || parsed.destination)}&format=json&limit=5&addressdetails=1`,
-      { headers: { "Accept-Language": "en", "User-Agent": "Sealion7-Navigator" } }
+    const serverRes = await fetch(
+      `${SERVER}/navigate?q=${encodeURIComponent(destination)}`,
+      { signal: AbortSignal.timeout(8000) }
     );
-    const places = await searchRes.json();
+    if (serverRes.ok) {
+      const data = await serverRes.json();
+      places = data.places;
+    }
+  } catch(e) {
+    navSetStatus(`⟳ Server unavailable, trying direct search…`);
+  }
 
-    if (!places.length) {
-      navStatus.innerHTML = `<span style="color:var(--red);">✗ No results found for "${parsed.destination}".</span>`;
+  // Fallback: direct Nominatim
+  if (!places) {
+    try {
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destination)}&format=json&limit=5&addressdetails=1`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      places = await r.json();
+    } catch(e) {
+      navSetStatus(`✗ Search failed: ${e.message}`, "var(--red)");
       return;
     }
-
-    navStatus.innerHTML = `<span style="color:var(--green);">✓ Found ${places.length} results for "${parsed.destination}"</span>`;
-    navRenderSuggestions(places, parsed.destination);
-
-  } catch(e) {
-    navStatus.innerHTML = `<span style="color:var(--red);">✗ ${e.message}</span>`;
   }
+
+  if (!places || !places.length) {
+    navSetStatus(`✗ No results for "${destination}". Try being more specific.`, "var(--red)");
+    return;
+  }
+
+  navSetStatus(`✓ ${places.length} results for "${destination}"`, "var(--green)");
+  navRenderSuggestions(places, destination);
 }
 
 // ── Render location suggestions ──
