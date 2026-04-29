@@ -2270,13 +2270,45 @@ function navRender(places, query) {
     btn.style.cssText = "font-size:11px;padding:6px 12px;flex-shrink:0;";
     btn.textContent = "🗺 ABRP";
     btn.onclick = function() {
-      // ABRP deep link format: destinations JSON array with lat/lng/name
-      var plan = JSON.stringify([{lat: parseFloat(p.lat), lng: parseFloat(p.lon), name: name}]);
-      var dest = "https://abetterrouteplanner.com/?plan=" + encodeURIComponent(plan);
-      var serial = document.getElementById("device-select").value || null;
-      // Navigate current tab to ABRP (avoids popup blocker)
-      navStatus("✓ Opening ABRP → " + name, "var(--green)");
-      setTimeout(function() { window.location.href = dest; }, 500);
+      var lat = parseFloat(p.lat);
+      var lon = parseFloat(p.lon);
+      navStatus("⟳ Getting current position…", "var(--accent)");
+
+      function openAbrp(startLat, startLon) {
+        var destinations = startLat !== null
+          // With current position: start → destination
+          ? JSON.stringify([
+              {"address": "Current Location", "lat": startLat, "lon": startLon},
+              {"address": name, "lat": lat, "lon": lon}
+            ])
+          // Without position: just destination
+          : JSON.stringify([{"address": name, "lat": lat, "lon": lon}]);
+
+        var params = new URLSearchParams({
+          destinations:   destinations,
+          car_model:      "byd:sealion:25:82:rwd",
+          charge_stops:   "optimal",
+          allow_motorway: "true",
+          allow_toll:     "true",
+          allow_ferry:    "true",
+          allow_border:   "true",
+        });
+        navStatus("✓ Opening ABRP → " + name, "var(--green)");
+        setTimeout(function() {
+          window.location.href = "https://abetterrouteplanner.com/?" + params.toString();
+        }, 500);
+      }
+
+      // Try browser geolocation first
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          function(pos) { openAbrp(pos.coords.latitude, pos.coords.longitude); },
+          function()    { openAbrp(null, null); }, // denied or failed — open without start
+          { timeout: 5000, maximumAge: 30000 }
+        );
+      } else {
+        openAbrp(null, null);
+      }
     };
     var info = document.createElement("div");
     info.style.cssText = "flex:1;min-width:0;";
