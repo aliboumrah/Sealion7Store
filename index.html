@@ -600,14 +600,18 @@
   <!-- Navigate pane -->
   <div id="navigate-pane" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);">
 
-    <!-- Voice status bar -->
-    <div id="nav-bar" style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;">
-      <button id="nav-mic-btn" style="width:52px;height:52px;border-radius:50%;background:var(--accent-dim);border:2px solid var(--accent);color:var(--accent);font-size:22px;cursor:pointer;flex-shrink:0;transition:all .2s;">🎙</button>
-      <div style="flex:1;">
-        <div id="nav-transcript" style="font-size:13px;color:var(--text);font-style:italic;min-height:20px;">Press 🎙 and say where you want to go…</div>
-        <div id="nav-status" style="font-size:11px;color:var(--muted);margin-top:2px;"></div>
+    <!-- Voice + text input bar -->
+    <div id="nav-bar" style="display:flex;flex-direction:column;gap:0;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;">
+      <!-- Text input row -->
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;">
+        <button id="nav-mic-btn" style="width:44px;height:44px;border-radius:50%;background:var(--accent-dim);border:2px solid var(--accent);color:var(--accent);font-size:20px;cursor:pointer;flex-shrink:0;transition:all .2s;" title="Hold to speak">🎙</button>
+        <input id="nav-text-input" type="text" placeholder='Type or say "I want to go to Paris"…'
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;"/>
+        <button id="nav-go-btn" class="install-btn" style="flex-shrink:0;">Go</button>
+        <button id="nav-clear-btn" class="hdr-btn">✕</button>
       </div>
-      <button id="nav-clear-btn" class="hdr-btn">✕ Clear</button>
+      <!-- Status row -->
+      <div id="nav-status" style="font-size:11px;color:var(--muted);padding:0 16px 8px;min-height:18px;"></div>
     </div>
 
     <!-- AI response + suggestions -->
@@ -2173,68 +2177,101 @@ async function wizardSetupBoot(btn) {
 let navRecognition = null;
 let navListening   = false;
 
-const micBtn        = document.getElementById("nav-mic-btn");
-const navTranscript = document.getElementById("nav-transcript");
-const navStatus     = document.getElementById("nav-status");
-const navSuggestions= document.getElementById("nav-suggestions");
+const micBtn         = document.getElementById("nav-mic-btn");
+const navTextInput   = document.getElementById("nav-text-input");
+const navStatus      = document.getElementById("nav-status");
+const navSuggestions = document.getElementById("nav-suggestions");
 
-// ── Speech Recognition setup ──
+function navSetStatus(msg, color) {
+  navStatus.style.color = color || "var(--muted)";
+  navStatus.textContent = msg;
+}
+
+// ── Speech Recognition ──
 function navInitSpeech() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    navStatus.textContent = "⚠ Speech recognition not supported in this browser.";
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    navSetStatus("⚠ Voice not supported in this browser — use the text box instead.", "var(--yellow)");
+    micBtn.style.opacity = "0.3";
     micBtn.disabled = true;
-    return;
+    return false;
   }
-  navRecognition = new SpeechRecognition();
-  navRecognition.lang = "en-US";
+  navRecognition = new SR();
+  navRecognition.lang        = "en-US";
+  navRecognition.continuous  = false;
   navRecognition.interimResults = true;
-  navRecognition.maxAlternatives = 1;
 
   navRecognition.onstart = () => {
     navListening = true;
-    micBtn.style.background = "var(--accent)";
-    micBtn.style.color = "#000";
+    micBtn.style.background = "var(--red)";
+    micBtn.style.borderColor = "var(--red)";
+    micBtn.style.color = "#fff";
     micBtn.textContent = "⏹";
-    navStatus.textContent = "Listening…";
-    navTranscript.textContent = "";
+    navSetStatus("🎙 Listening… speak now", "var(--accent)");
+    navTextInput.placeholder = "Listening…";
   };
 
   navRecognition.onresult = (e) => {
-    const interim = Array.from(e.results).map(r => r[0].transcript).join(" ");
-    navTranscript.textContent = interim;
+    const transcript = Array.from(e.results).map(r => r[0].transcript).join(" ");
+    navTextInput.value = transcript;
     if (e.results[e.results.length - 1].isFinal) {
       navRecognition.stop();
-      navProcessSpeech(interim.trim());
+      navProcessSpeech(transcript.trim());
     }
   };
 
   navRecognition.onerror = (e) => {
-    navStatus.textContent = `⚠ ${e.error}`;
+    const msgs = {
+      "not-allowed": "Microphone permission denied. Use the text box instead.",
+      "no-speech":   "No speech detected. Try again or type your destination.",
+      "network":     "Network error during speech recognition.",
+      "aborted":     "Speech recognition stopped."
+    };
+    navSetStatus("⚠ " + (msgs[e.error] || e.error), "var(--yellow)");
     navResetMic();
   };
 
-  navRecognition.onend = () => navResetMic();
+  navRecognition.onend = () => {
+    navResetMic();
+    navTextInput.placeholder = 'Type or say "I want to go to Paris"…';
+  };
+  return true;
 }
 
 function navResetMic() {
   navListening = false;
-  micBtn.style.background = "var(--accent-dim)";
-  micBtn.style.color = "var(--accent)";
-  micBtn.textContent = "🎙";
+  micBtn.style.background  = "var(--accent-dim)";
+  micBtn.style.borderColor = "var(--accent)";
+  micBtn.style.color       = "var(--accent)";
+  micBtn.textContent       = "🎙";
 }
 
 micBtn.addEventListener("click", () => {
-  if (!navRecognition) navInitSpeech();
-  if (!navRecognition) return;
-  if (navListening) { navRecognition.stop(); return; }
-  navSuggestions.innerHTML = "";
-  navRecognition.start();
+  if (navListening) { navRecognition && navRecognition.stop(); return; }
+  if (!navRecognition && !navInitSpeech()) return;
+  try {
+    navSuggestions.innerHTML = "";
+    navRecognition.start();
+  } catch(e) {
+    navSetStatus("⚠ Could not start microphone: " + e.message, "var(--yellow)");
+  }
+});
+
+// Text input — Go button and Enter key
+document.getElementById("nav-go-btn").addEventListener("click", () => {
+  const txt = navTextInput.value.trim();
+  if (txt) { navSuggestions.innerHTML = ""; navProcessSpeech(txt); }
+});
+navTextInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    const txt = navTextInput.value.trim();
+    if (txt) { navSuggestions.innerHTML = ""; navProcessSpeech(txt); }
+  }
 });
 
 document.getElementById("nav-clear-btn").addEventListener("click", () => {
-  navTranscript.textContent = "Press 🎙 and say where you want to go…";
-  navStatus.textContent = "";
+  navTextInput.value = "";
+  navSetStatus("");
   navSuggestions.innerHTML = "";
 });
 
