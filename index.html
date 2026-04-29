@@ -456,6 +456,7 @@
   <div class="tab" data-tab="carservice">🚗 Car Service</div>
   <div class="tab" data-tab="abrp">🗺 ABRP</div>
   <div class="tab" data-tab="navigate">🎙 Navigate</div>
+  <div class="tab" data-tab="history">📈 History</div>
   <div class="tab" data-tab="shell">⌨ Shell</div>
 </div>
 
@@ -632,6 +633,35 @@
       <div id="nav-suggestions" style="display:flex;flex-direction:column;gap:10px;"></div>
     </div>
 
+  </div>
+
+  <!-- History pane -->
+  <div id="history-pane" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);">
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;">
+      <select id="hist-metric" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:8px;outline:none;cursor:pointer;">
+        <option value="0x21604402">🔋 SOC %</option>
+        <option value="0x21604421">⚡ EV kWh</option>
+        <option value="0x21604601">🚗 Speed km/h</option>
+        <option value="0x21404401">📍 EV Range km</option>
+        <option value="0x21604409">🛣 Odometer km</option>
+        <option value="0x21404604">🌡 Ext Temp °C</option>
+        <option value="0x21603408">🔌 Charge Power W</option>
+        <option value="0x21601421">📊 Last 50km kWh/km</option>
+        <option value="0x21604405">📈 Avg Consump kWh</option>
+        <option value="0x2160801d">🔵 Tyre FL psi</option>
+        <option value="0x2160801e">🔵 Tyre FR psi</option>
+        <option value="0x2160801f">🔵 Tyre RL psi</option>
+        <option value="0x21608020">🔵 Tyre RR psi</option>
+      </select>
+      <button id="hist-refresh-btn" class="hdr-btn">⟳ Refresh</button>
+      <button id="hist-dl-history-btn" class="hdr-btn" title="Download history JSON">⬇ History</button>
+      <button id="hist-dl-cache-btn" class="hdr-btn" title="Download full property cache">⬇ Cache</button>
+      <span id="hist-status" style="font-size:11px;color:var(--muted);font-family:var(--mono);"></span>
+    </div>
+    <div id="hist-chart-wrap" style="flex:1;overflow:hidden;padding:16px;display:flex;flex-direction:column;">
+      <canvas id="hist-canvas" style="flex:1;width:100%;"></canvas>
+      <div id="hist-empty" style="color:var(--muted);font-size:12px;text-align:center;padding:40px;">No history yet — server polls every 60s</div>
+    </div>
   </div>
 
   <!-- Shell pane -->
@@ -885,7 +915,7 @@ const histList  = document.getElementById("history-list");
 let cmdHistory = [], histIdx = -1;
 
 // ── Tabs ──
-const panes = { linux: document.getElementById("linux-pane"), termux: document.getElementById("termux-pane"), apk: document.getElementById("apk-pane"), packages: document.getElementById("packages-pane"), carservice: document.getElementById("carservice-pane"), abrp: document.getElementById("abrp-pane"), navigate: document.getElementById("navigate-pane"), shell: document.getElementById("terminal-pane") };
+const panes = { linux: document.getElementById("linux-pane"), termux: document.getElementById("termux-pane"), apk: document.getElementById("apk-pane"), packages: document.getElementById("packages-pane"), carservice: document.getElementById("carservice-pane"), abrp: document.getElementById("abrp-pane"), navigate: document.getElementById("navigate-pane"), history: document.getElementById("history-pane"), shell: document.getElementById("terminal-pane") };
 let allPackages = [];
 const quickBar = document.getElementById("quick-bar");
 document.querySelectorAll(".tab").forEach(tab => {
@@ -896,6 +926,7 @@ document.querySelectorAll(".tab").forEach(tab => {
     switchTab(t);
     if (t === "packages" && allPackages.length === 0) loadPackages();
     if (t === "carservice" && !csData) loadCarService();
+    if (t === "history") loadHistory();
     if (t === "navigate") {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SR) {
@@ -1674,8 +1705,7 @@ async function loadCarService() {
     const data = await res.json();
     if (!data.success) throw new Error("Failed to load properties");
     csProperties = data.properties;
-    const dbg = data.debug || {};
-    status.textContent = `${data.count} props · chunks:${dbg.evChunks||'?'} evLen:${dbg.evBodyLen||'?'} · ${new Date().toLocaleTimeString()}`;
+    status.textContent = `${data.count} properties · ${new Date().toLocaleTimeString()}`;
     renderCsDashboard();
     renderCsList();
   } catch(e) {
@@ -1735,6 +1765,19 @@ function renderCsDashboard() {
         cfg.icon = "🔌";
         cfg.label = "Charging";
       }
+    }
+    // Sport mode: 1=eco, 2=sport, 3=normal, 4=snow
+    if (cfg.id === "0x21403974") {
+      const modeMap = { 1: { icon: "🍃", label: "Eco",    color: "var(--green)" },
+                        2: { icon: "🏎", label: "Sport",  color: "var(--red)" },
+                        3: { icon: "🚗", label: "Normal", color: "var(--accent)" },
+                        4: { icon: "❄️", label: "Snow",   color: "#88ccff" } };
+      const mode = modeMap[val] || { icon: "🚗", label: "Mode " + val, color: "var(--muted)" };
+      cfg.icon  = mode.icon;
+      cfg.label = mode.label;
+      cardColor = mode.color;
+      displayVal = mode.label;
+      displayUnit = "";
     }
     if (cfg.id === "0x2140460e") return; // skip separate discharge card
 
@@ -2365,6 +2408,137 @@ function navMicClick() {
   };
   navRecog.start();
 }
+
+// ── History tab ──
+let histData = [];
+
+async function loadHistory() {
+  const status = document.getElementById("hist-status");
+  status.textContent = "⟳ Loading…";
+  try {
+    const res  = await fetch(`${SERVER}/history`);
+    const data = await res.json();
+    histData = data.history || [];
+    status.textContent = `${histData.length} snapshots · ${new Date().toLocaleTimeString()}`;
+    renderHistChart();
+  } catch(e) {
+    status.textContent = "✗ " + e.message;
+  }
+}
+
+function renderHistChart() {
+  const canvas  = document.getElementById("hist-canvas");
+  const empty   = document.getElementById("hist-empty");
+  const metricId = document.getElementById("hist-metric").value;
+
+  if (!histData.length) { empty.style.display = ""; canvas.style.display = "none"; return; }
+
+  const points = histData
+    .filter(s => s[metricId] !== undefined && s[metricId] !== null)
+    .map(s => ({ ts: s.ts, val: Array.isArray(s[metricId]) ? s[metricId][0] : s[metricId] }));
+
+  if (!points.length) { empty.style.display = ""; canvas.style.display = "none"; return; }
+  empty.style.display = "none";
+  canvas.style.display = "";
+
+  const ctx = canvas.getContext("2d");
+  canvas.width  = canvas.offsetWidth  * window.devicePixelRatio;
+  canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+
+  const vals = points.map(p => p.val);
+  const minV = Math.min(...vals), maxV = Math.max(...vals);
+  const range = maxV - minV || 1;
+  const pad = { top: 20, bottom: 30, left: 45, right: 16 };
+  const chartW = W - pad.left - pad.right;
+  const chartH = H - pad.top  - pad.bottom;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = "rgba(255,255,255,0.06)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (chartH / 4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+    const label = (maxV - (range / 4) * i).toFixed(1);
+    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "right";
+    ctx.fillText(label, pad.left - 4, y + 4);
+  }
+
+  // Line
+  ctx.beginPath();
+  ctx.strokeStyle = "var(--accent)";
+  ctx.lineWidth = 2;
+  points.forEach((p, i) => {
+    const x = pad.left + (i / (points.length - 1 || 1)) * chartW;
+    const y = pad.top  + (1 - (p.val - minV) / range) * chartH;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Fill under line
+  const lastX = pad.left + chartW, firstX = pad.left;
+  ctx.lineTo(lastX, pad.top + chartH);
+  ctx.lineTo(firstX, pad.top + chartH);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(0,200,212,0.08)";
+  ctx.fill();
+
+  // Time labels
+  ctx.fillStyle = "rgba(255,255,255,0.3)";
+  ctx.font = "10px monospace";
+  ctx.textAlign = "center";
+  [0, Math.floor(points.length/2), points.length-1].forEach(i => {
+    if (!points[i]) return;
+    const x = pad.left + (i / (points.length - 1 || 1)) * chartW;
+    const t = new Date(points[i].ts).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+    ctx.fillText(t, x, H - 6);
+  });
+
+  // Current value dot
+  const last = points[points.length - 1];
+  const lx = pad.left + chartW;
+  const ly = pad.top + (1 - (last.val - minV) / range) * chartH;
+  ctx.beginPath();
+  ctx.arc(lx, ly, 5, 0, Math.PI * 2);
+  ctx.fillStyle = "var(--accent)";
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 11px monospace";
+  ctx.textAlign = "right";
+  ctx.fillText(last.val.toFixed(1), lx - 8, ly - 8);
+}
+
+document.getElementById("hist-refresh-btn").addEventListener("click", loadHistory);
+document.getElementById("hist-metric").addEventListener("change", renderHistChart);
+window.addEventListener("resize", () => { if (histData.length) renderHistChart(); });
+
+function downloadJson(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("hist-dl-history-btn").addEventListener("click", () => {
+  if (!histData.length) { loadHistory().then(() => downloadJson(histData, "sealion7_history.json")); return; }
+  downloadJson(histData, "sealion7_history.json");
+});
+
+document.getElementById("hist-dl-cache-btn").addEventListener("click", async () => {
+  try {
+    const res  = await fetch(`${SERVER}/properties`);
+    const data = await res.json();
+    downloadJson(data.properties, "sealion7_cache.json");
+  } catch(e) {
+    alert("✗ " + e.message);
+  }
+});
 
 // ── Init ──
 serverUrlInput.value = SERVER;
