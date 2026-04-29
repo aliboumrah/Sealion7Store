@@ -606,7 +606,7 @@
         <button id="nav-mic-btn"
           onclick="navMicClick()"
           style="width:44px;height:44px;border-radius:50%;background:var(--accent-dim);border:2px solid var(--accent);color:var(--accent);font-size:20px;cursor:pointer;flex-shrink:0;transition:all .2s;">🎙</button>
-        <input id="nav-text-input" type="text" placeholder='Type destination and press Go…'
+        <input id="nav-text-input" type="text" placeholder='Ex: Paris, Tour Eiffel, Casablanca…'
           onkeydown="if(event.key==='Enter') navGo()"
           style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;"/>
         <button onclick="navGo()" class="install-btn" style="flex-shrink:0;">Go</button>
@@ -2206,8 +2206,12 @@ function navClear() {
 }
 
 function navExtract(text) {
-  var m = text.match(/(?:go to|navigate to|take me to|drive to|route to|i want to go to|head to|find)\s+(.+)/i);
-  return m ? m[1].trim().replace(/[?.!]$/, "") : text.trim().replace(/[?.!]$/, "");
+  // English patterns
+  var enRe = /(?:go to|navigate to|take me to|drive to|route to|i want to go to|head to|find)\s+(.+)/i;
+  // French patterns
+  var frRe = /(?:aller [aà]|emmène.moi [aà]|emmene.moi [aà]|je veux aller [aà]|conduis.moi [aà]|direction|itinéraire vers|itineraire vers|trouve|amène.moi [aà]|amene.moi [aà]|naviguer vers|route vers|va [aà])\s+(.+)/i;
+  var m = enRe.exec(text) || frRe.exec(text);
+  return m ? m[m.length-1].trim().replace(/[?.!]$/, "") : text.trim().replace(/[?.!]$/, "");
 }
 
 async function navSearch(query) {
@@ -2264,7 +2268,7 @@ function navMicClick() {
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var btn = document.getElementById("nav-mic-btn");
   if (!SR) {
-    navStatus("⚠ Voice not supported — type your destination and press Go", "var(--yellow)");
+    navStatus("⚠ Voix non supportée — tapez votre destination / Voice not supported", "var(--yellow)");
     document.getElementById("nav-text-input").focus();
     return;
   }
@@ -2273,7 +2277,7 @@ function navMicClick() {
     return;
   }
   navRecog = new SR();
-  navRecog.lang = "en-US";
+  navRecog.lang = navigator.language || "fr-FR"; // use browser locale (fr-FR for French)
   navRecog.interimResults = false;
   navRecog.onstart = function() {
     navListening = true;
@@ -2281,7 +2285,7 @@ function navMicClick() {
     btn.style.background = "var(--red)";
     btn.style.borderColor = "var(--red)";
     btn.style.color = "#fff";
-    navStatus("🎙 Listening…", "var(--accent)");
+    navStatus("🎙 En écoute… / Listening…", "var(--accent)");
   };
   navRecog.onresult = function(e) {
     var t = e.results[0][0].transcript;
