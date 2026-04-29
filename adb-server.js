@@ -502,41 +502,69 @@ const server = http.createServer(async (req, res) => {
       return null;
     }
 
-    // Map property IDs — verified from actual dumpsys output
-    const soc            = getPropValue("0x21604402", true);  // ELEC_PERCENTAGE_VALUER float=90.0
+    // ── Property fetch — verified IDs from actual dumpsys ──
+    const soc            = getPropValue("0x21604402", true);  // ELEC_PERCENTAGE_VALUER float %
     const speed          = getPropValue("0x21604601", true);  // VEHICLE_SPEED float km/h
     const extTemp        = getPropValue("0x21404604");        // ENVIRONMENT_TEMP int °C
     const chargePower    = getPropValue("0x21603408", true);  // CHARGING_POWERR float W
     const dischargeState = getPropValue("0x2140460e");        // DISCHARGE_STATE (3=discharging)
     const gear           = getPropValue("0x21403a0a");        // GEAR_R (1=P,2=R,3=N,4=D)
     const soh            = getPropValue("0x21402037");        // BATTERY_HEALTH_STATUS_R int %
-    const hvVoltRear     = getPropValue("0x21407407");        // MOTOR_MCU_GENERATRIX_VOLT_REAR int
+    const soe            = getPropValue("0x21604421", true);  // EV_REMAINING_BATTERY_POWER_R kWh
+    const hvVoltRaw      = getPropValue("0x21407407");        // MOTOR_MCU_GENERATRIX_VOLT_REAR
+    const odometer       = getPropValue("0x21604409", true);  // TOTAL_MILEAGE_VALUER km
+    const evRange        = getPropValue("0x21404401");        // ELEC_DRIVING_RANGE_BY_STANDARD km
+    const hvacSetpoint   = getPropValue("0x21401023");        // AC_CONTROLLER_DRIVER_TEMP_SET °C
+    const tyreFl         = getPropValue("0x2160801d", true);  // LEFTFRONTTIREPRESSURE psi
+    const tyreFr         = getPropValue("0x2160801e", true);  // RIGHTFRONTTIREPRESSURE psi
+    const tyreRl         = getPropValue("0x2160801f", true);  // LEFTREARTIREPRESSURE psi
+    const tyreRr         = getPropValue("0x21608020", true);  // RIGHTREARTIREPRESSURE psi
 
-    // Charging logic: DISCHARGE_STATE=3 = discharging
+    // ── Derived values ──
     const isDischarging  = Number(dischargeState) === 3;
-    const powerKw        = chargePower !== null ? parseFloat((chargePower / 1000).toFixed(3)) : null;
+    const powerKw        = chargePower !== null ? chargePower / 1000 : null;
     const isChargingVal  = (!isDischarging && powerKw !== null && powerKw > 0) ? 1 : 0;
     const isParked       = Number(gear) === 1 ? 1 : 0;
 
-    // HV voltage: MOTOR_MCU_GENERATRIX_VOLT_REAR — valid only when non-zero and != 65535
-    const hvVolt = (hvVoltRear !== null && hvVoltRear !== 65535 && hvVoltRear > 0)
-      ? hvVoltRear : null;
+    // power: ABRP convention — output (driving) = positive, input (charging) = negative
+    let powerAbrp = null;
+    if (powerKw !== null) {
+      powerAbrp = isChargingVal ? -Math.abs(powerKw) : Math.abs(powerKw);
+    }
 
-    // Build ABRP telemetry payload
-    // Format: https://api.iternio.com/1/tlm/send?token=<TOKEN>&tlm=<JSON>
-    // Example: {"utc":1553807658,"soc":80.4,"soh":97.7,"speed":0,"is_charging":0,"power":13.2,"ext_temp":25,"car_model":"..."}
+    // voltage: only send when valid (non-zero, not 65535 = no data)
+    const voltage = (hvVoltRaw !== null && hvVoltRaw > 0 && hvVoltRaw !== 65535) ? hvVoltRaw : null;
+
+    // tyre pressure: convert psi → kPa (1 psi = 6.89476 kPa)
+    const psiToKpa = v => v !== null ? parseFloat((v * 6.89476).toFixed(1)) : null;
+
+    // ── Build ABRP telemetry payload ──
+    // Ref: https://documenter.getpostman.com/view/7396339/SWTK5a8w
     const tlm = {
-      utc:        Math.floor(Date.now() / 1000),
-      car_model:  "byd:sealion:25:82:rwd",
+      utc:       Math.floor(Date.now() / 1000),
+      car_model: "byd:sealion:25:82:rwd",
     };
-    if (soc !== null)      tlm.soc         = parseFloat(soc.toFixed(1));
-    if (soh !== null)      tlm.soh         = soh;
-    if (speed !== null)    tlm.speed       = parseFloat(speed.toFixed(1));
-    if (extTemp !== null)  tlm.ext_temp    = extTemp;
-    if (hvVolt !== null)   tlm.voltage     = hvVolt;
-                           tlm.is_charging = isChargingVal;
-                           tlm.is_dcfc     = 0;
-    if (powerKw !== null)  tlm.power       = isChargingVal ? powerKw : -Math.abs(powerKw);
+
+    // High priority
+    if (soc !== null)          tlm.soc         = parseFloat(soc.toFixed(1));
+    if (powerAbrp !== null)    tlm.power       = parseFloat(powerAbrp.toFixed(3));
+    if (speed !== null)        tlm.speed       = parseFloat(speed.toFixed(1));
+                               tlm.is_charging = isChargingVal;
+                               tlm.is_dcfc     = 0;
+                               tlm.is_parked   = isParked;
+
+    // Lower priority
+    if (soe !== null)          tlm.soe              = parseFloat(soe.toFixed(2));
+    if (soh !== null)          tlm.soh              = soh;
+    if (extTemp !== null)      tlm.ext_temp         = extTemp;
+    if (voltage !== null)      tlm.voltage          = voltage;
+    if (odometer !== null)     tlm.odometer         = parseFloat(odometer.toFixed(1));
+    if (evRange !== null)      tlm.est_battery_range = evRange;
+    if (hvacSetpoint !== null) tlm.hvac_setpoint    = hvacSetpoint;
+    if (tyreFl !== null)       tlm.tire_pressure_fl = psiToKpa(tyreFl);
+    if (tyreFr !== null)       tlm.tire_pressure_fr = psiToKpa(tyreFr);
+    if (tyreRl !== null)       tlm.tire_pressure_rl = psiToKpa(tyreRl);
+    if (tyreRr !== null)       tlm.tire_pressure_rr = psiToKpa(tyreRr);
 
     // Push to ABRP API
     const https = require("https");
@@ -611,6 +639,62 @@ const server = http.createServer(async (req, res) => {
     } catch(e) {
       res.writeHead(200);
       res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // ── GET /ssh-info — return SSH connection details ──
+  if (req.method === "GET" && pathname === "/ssh-info") {
+    const { execSync } = require("child_process");
+    let ip = "";
+    try {
+      ip = execSync("ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 | head -1").toString().trim();
+      if (!ip) ip = execSync("ip addr show 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | cut -d/ -f1 | head -1").toString().trim();
+    } catch(e) {}
+    const sshRunning = (() => { try { execSync("pgrep -x sshd"); return true; } catch { return false; } })();
+    res.writeHead(200);
+    res.end(JSON.stringify({ ip, sshRunning, sshPort: 8022, user: process.env.USER || "u0_a" }));
+    return;
+  }
+
+  // ── POST /ssh-setup — install and start SSH ──
+  if (req.method === "POST" && pathname === "/ssh-setup") {
+    const steps = [];
+    const run = (cmd) => runShell(cmd);
+    const r1 = await run("pkg install openssh -y");
+    steps.push({ cmd: "install openssh", ok: r1.success });
+    const r2 = await run("[ -f ~/.ssh/id_rsa ] || ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa -N ''");
+    steps.push({ cmd: "generate keys", ok: r2.success });
+    const r3 = await run("pgrep -x sshd || sshd");
+    steps.push({ cmd: "start sshd", ok: r3.success });
+    // Get SSH info
+    const { execSync } = require("child_process");
+    let ip = "";
+    try { ip = execSync("ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1").toString().trim(); } catch {}
+    res.writeHead(200);
+    res.end(JSON.stringify({ success: true, steps, ip, port: 8022 }));
+    return;
+  }
+
+  // ── GET /navigate — server-side Nominatim search (avoids CORS) ──
+  if (req.method === "GET" && pathname === "/navigate") {
+    const q = parsed.query && parsed.query.q;
+    if (!q) { res.writeHead(400); res.end(JSON.stringify({ error: "Missing q" })); return; }
+    try {
+      const https = require("https");
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&addressdetails=1`;
+      const data = await new Promise((resolve, reject) => {
+        https.get(url, { headers: { "User-Agent": "Sealion7-ADB-Shell", "Accept-Language": "en" } }, (r) => {
+          let body = "";
+          r.on("data", c => body += c);
+          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
+        }).on("error", reject);
+      });
+      res.writeHead(200);
+      res.end(JSON.stringify({ places: data }));
+    } catch(e) {
+      res.writeHead(200);
+      res.end(JSON.stringify({ places: [], error: e.message }));
     }
     return;
   }
