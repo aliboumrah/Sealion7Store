@@ -883,6 +883,16 @@ document.querySelectorAll(".tab").forEach(tab => {
     switchTab(t);
     if (t === "packages" && allPackages.length === 0) loadPackages();
     if (t === "carservice" && !csData) loadCarService();
+    if (t === "navigate") {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {
+        document.getElementById("nav-status").style.color = "var(--yellow)";
+        document.getElementById("nav-status").textContent = "⚠ Voice not supported on this browser — use the text box";
+        document.getElementById("nav-mic-btn").style.opacity = "0.3";
+      } else {
+        document.getElementById("nav-status").textContent = "🎙 Tap mic to speak, or type below";
+      }
+    }
     if (t === "termux") checkSshStatus();
   });
 });
@@ -2247,13 +2257,34 @@ function navResetMic() {
 }
 
 micBtn.addEventListener("click", () => {
-  if (navListening) { navRecognition && navRecognition.stop(); return; }
+  if (navListening) {
+    navRecognition && navRecognition.stop();
+    return;
+  }
+
+  // Check support first
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    navSetStatus("⚠ Voice not supported on this browser. Use the text box ↑", "var(--yellow)");
+    navTextInput.focus();
+    return;
+  }
+
   if (!navRecognition && !navInitSpeech()) return;
+
   try {
     navSuggestions.innerHTML = "";
+    navSetStatus("⟳ Starting microphone…");
     navRecognition.start();
   } catch(e) {
-    navSetStatus("⚠ Could not start microphone: " + e.message, "var(--yellow)");
+    // Already started or other error
+    if (e.name === "InvalidStateError") {
+      navSetStatus("⚠ Mic already active — try again", "var(--yellow)");
+      navRecognition = null; // reset so next click reinitializes
+    } else {
+      navSetStatus("⚠ Mic error: " + e.message + " — use text box instead", "var(--yellow)");
+      navTextInput.focus();
+    }
   }
 });
 
