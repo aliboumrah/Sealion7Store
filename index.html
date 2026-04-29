@@ -455,6 +455,7 @@
   <div class="tab" data-tab="packages">📋 Packages</div>
   <div class="tab" data-tab="carservice">🚗 Car Service</div>
   <div class="tab" data-tab="abrp">🗺 ABRP</div>
+  <div class="tab" data-tab="navigate">🎙 Navigate</div>
   <div class="tab" data-tab="shell">⌨ Shell</div>
 </div>
 
@@ -596,6 +597,26 @@
 
   </div>
 
+  <!-- Navigate pane -->
+  <div id="navigate-pane" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);">
+
+    <!-- Voice status bar -->
+    <div id="nav-bar" style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;">
+      <button id="nav-mic-btn" style="width:52px;height:52px;border-radius:50%;background:var(--accent-dim);border:2px solid var(--accent);color:var(--accent);font-size:22px;cursor:pointer;flex-shrink:0;transition:all .2s;">🎙</button>
+      <div style="flex:1;">
+        <div id="nav-transcript" style="font-size:13px;color:var(--text);font-style:italic;min-height:20px;">Press 🎙 and say where you want to go…</div>
+        <div id="nav-status" style="font-size:11px;color:var(--muted);margin-top:2px;"></div>
+      </div>
+      <button id="nav-clear-btn" class="hdr-btn">✕ Clear</button>
+    </div>
+
+    <!-- AI response + suggestions -->
+    <div id="nav-content" style="flex:1;overflow-y:auto;padding:16px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;">
+      <div id="nav-suggestions" style="display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
+
+  </div>
+
   <!-- Shell pane -->
   <div id="terminal-pane" style="position:relative;display:none;flex-direction:column;flex:1;overflow:hidden;">
     <div id="terminal">
@@ -647,101 +668,93 @@
   </div>
 
   <!-- Termux pane — simplified -->
-  <div id="termux-pane" style="display:none;flex:1;overflow-y:auto;padding:24px;background:var(--bg);flex-direction:column;gap:20px;scrollbar-width:thin;scrollbar-color:var(--border2) transparent;">
+  <div id="termux-pane" style="display:none;flex:1;overflow-y:auto;padding:24px;background:var(--bg);flex-direction:column;gap:16px;scrollbar-width:thin;scrollbar-color:var(--border2) transparent;">
 
     <div class="guide-hero">
       <div class="guide-hero-icon">📟</div>
       <div>
-        <h1>Termux Setup</h1>
-        <p>Download Termux from F-Droid (not Google Play), then run one command to start the server.</p>
+        <h1>Termux Setup Wizard</h1>
+        <p>Click each button in order. The UI does everything via ADB automatically — no typing on the car screen needed.</p>
       </div>
     </div>
 
-    <!-- Step 1: Download on device -->
-    <div class="step-card open" id="ts1">
-      <div class="step-header" onclick="toggleStep('ts1')">
-        <div class="step-num green">1</div>
-        <div class="step-title">Download Termux from F-Droid</div>
-        <span class="step-badge badge-android">On device</span>
-        <span class="step-chevron">▶</span>
-      </div>
-      <div class="step-body">
-        <div class="warn-box"><strong>⚠ Do not use Google Play</strong> — the Termux version there is outdated and broken. Use F-Droid instead.</div>
-        <p>Open the car browser and go to:</p>
-        <div class="cmd-block">https://f-droid.org/en/packages/com.termux/</div>
-        <p>Download and install the APK directly on the device.</p>
-      </div>
-    </div>
+    <!-- Wizard steps -->
+    <div class="guide-steps">
 
-    <!-- Step 2: Connect ADB from PC -->
-    <div class="step-card open" id="ts2">
-      <div class="step-header" onclick="toggleStep('ts2')">
-        <div class="step-num blue">2</div>
-        <div class="step-title">Connect ADB from your PC</div>
-        <span class="step-badge badge-pc">On PC</span>
-        <span class="step-chevron">▶</span>
-      </div>
-      <div class="step-body">
-        <p>Plug a USB cable from the car's data port to your PC. Then run:</p>
-        <div class="cmd-block"><span class="kw">adb</span> devices<button class="cmd-run-btn" onclick="sendCmd('adb devices')">▶ Run</button></div>
-        <p>Or connect wirelessly over TCP:</p>
-        <div class="cmd-block"><span class="kw">adb</span> connect &lt;car-ip&gt;:5555<button class="cmd-run-btn" onclick="sendCmd('ip route')">▶ Get IP</button></div>
-        <div class="tip-box"><strong>💡</strong> Find the car's IP at Settings → WiFi → tap the connected network. Once connected the status indicators in the header will turn green.</div>
-      </div>
-    </div>
-
-    <!-- Step 3: Install via ADB from PC -->
-    <div class="step-card open" id="ts4">
-      <div class="step-header" onclick="toggleStep('ts4')">
-        <div class="step-num purple">3</div>
-        <div class="step-title">Or install via ADB from your PC</div>
-        <span class="step-badge badge-pc">On PC</span>
-        <span class="step-chevron">▶</span>
-      </div>
-      <div class="step-body">
-        <p>Download the Termux APK on your PC from F-Droid, then sideload it via ADB:</p>
-        <div class="cmd-block"><span class="cmt"># Download from F-Droid (or use the App Store tab above)</span>
-<span class="kw">adb</span> install -r com.termux_118.apk<button class="cmd-run-btn" onclick="sendCmd('pm list packages | grep termux')">▶ Check installed</button></div>
-        <p>Or use the <strong>🏪 App Store</strong> tab — drop the Termux APK in the custom install zone to sideload it wirelessly.</p>
-        <div class="tip-box"><strong>💡</strong> Once installed, launch Termux from the car screen or via ADB:<br/><br/>
-          <span style="font-family:var(--mono);font-size:11px;color:var(--accent);">adb shell am start -n com.termux/.HomeActivity</span>
+      <!-- Step 1: Install Termux via ADB -->
+      <div class="step-card open" id="ts1">
+        <div class="step-header" onclick="toggleStep('ts1')">
+          <div class="step-num green">1</div>
+          <div class="step-title">Install Termux via ADB</div>
+          <span class="step-badge badge-pc">Automated</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>Downloads Termux from F-Droid and installs it via ADB. Make sure ADB is connected (green dot).</p>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+            <button class="install-btn" onclick="wizardInstallTermux(this)">⬇ Install Termux</button>
+            <button class="hdr-btn" onclick="sendCmd('pm list packages | grep termux')">▶ Check installed</button>
+          </div>
+          <div id="tw1-log" class="install-log"></div>
+          <div class="tip-box" style="margin-top:10px;"><strong>💡</strong> Uses the Termux APK from the App Store. Or drag your own APK into the custom install zone in the 🏪 App Store tab.</div>
         </div>
       </div>
-    </div>
 
-    <!-- Step 3: Run command -->
-    <div class="step-card open" id="ts3">
-      <div class="step-header" onclick="toggleStep('ts3')">
-        <div class="step-num yellow">4</div>
-        <div class="step-title">Run this one command in Termux</div>
-        <span class="step-badge badge-android">In Termux</span>
-        <span class="step-chevron">▶</span>
-      </div>
-      <div class="step-body">
-        <p>Open Termux and paste this single command — it installs everything and starts the server:</p>
-        <div class="cmd-block"><span class="kw">curl</span> -s https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/start.sh -o ~/start.sh && bash ~/start.sh</div>
-        <div class="tip-box"><strong>💡 Next time</strong> just run: <code>bash ~/start.sh</code></div>
-      </div>
-    </div>
-
-    <!-- Step 5: Auto-start on Termux launch -->
-    <div class="step-card open" id="ts5">
-      <div class="step-header" onclick="toggleStep('ts5')">
-        <div class="step-num green">5</div>
-        <div class="step-title">Auto-start server when Termux opens</div>
-        <span class="step-badge badge-android">In Termux</span>
-        <span class="step-chevron">▶</span>
-      </div>
-      <div class="step-body">
-        <p>Run this once to make the server start automatically every time Termux is opened:</p>
-        <div class="cmd-block"><span class="kw">echo</span> <span class="str">'curl -s https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/start.sh -o ~/start.sh && bash ~/start.sh'</span> >> ~/.bashrc</div>
-        <div class="tip-box"><strong>💡</strong> Termux runs <code>~/.bashrc</code> on every launch. This will pull the latest script and start the server automatically.</div>
-        <div class="warn-box"><strong>⚠ To remove auto-start</strong> later, run:<br/><br/>
-          <span style="font-family:var(--mono);font-size:11px;">sed -i '/start.sh/d' ~/.bashrc</span>
+      <!-- Step 2: Grant RUN_COMMAND permission -->
+      <div class="step-card open" id="ts2">
+        <div class="step-header" onclick="toggleStep('ts2')">
+          <div class="step-num blue">2</div>
+          <div class="step-title">Grant Termux permissions</div>
+          <span class="step-badge badge-pc">Automated</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>Grants Termux the <code>RUN_COMMAND</code> permission so the UI can execute commands inside it via ADB.</p>
+          <button class="install-btn" style="margin-top:10px;" onclick="wizardGrantPermission(this)">🔑 Grant Permission</button>
+          <div id="tw2-log" class="install-log"></div>
         </div>
       </div>
-    </div>
 
+      <!-- Step 3: Run start.sh via RUN_COMMAND -->
+      <div class="step-card open" id="ts3">
+        <div class="step-header" onclick="toggleStep('ts3')">
+          <div class="step-num purple">3</div>
+          <div class="step-title">Run start.sh in Termux</div>
+          <span class="step-badge badge-pc">Automated</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>Sends <code>start.sh</code> to Termux via <strong>RUN_COMMAND</strong> intent — installs Node.js, git, ADB, clones the repo and starts the server.</p>
+          <button class="install-btn" style="margin-top:10px;" onclick="wizardRunStartSh(this)">▶ Run start.sh</button>
+          <div id="tw3-log" class="install-log"></div>
+          <div class="tip-box" style="margin-top:10px;"><strong>💡</strong> From now on <code>start.sh</code> auto-runs every time Termux opens. No USB or SSH needed.</div>
+        </div>
+      </div>
+
+
+
+      <!-- Step 4: Install termux-boot + write boot script -->
+      <div class="step-card open" id="ts4">
+        <div class="step-header" onclick="toggleStep('ts4')">
+          <div class="step-num yellow">4</div>
+          <div class="step-title">Auto-enable ADB on every boot</div>
+          <span class="step-badge badge-pc">Automated</span>
+          <span class="step-chevron">▶</span>
+        </div>
+        <div class="step-body">
+          <p>Installs <code>termux-boot</code> and writes a boot script that automatically re-enables ADB and starts the server every time the car restarts — no manual steps ever again.</p>
+          <button class="install-btn" style="margin-top:10px;" onclick="wizardSetupBoot(this)">🥾 Setup Auto-Boot</button>
+          <div id="tw4-log" class="install-log"></div>
+          <div class="tip-box" style="margin-top:10px;">
+            <strong>How it works:</strong> Android boots → Termux:Boot runs <code>~/.termux/boot/start.sh</code> → ADB re-enabled on port 5555 → Node server starts → UI connects automatically.
+          </div>
+          <div class="warn-box" style="margin-top:8px;">
+            <strong>⚠ Requires:</strong> Grant Termux:Boot the <em>Run at startup</em> permission from Android Settings → Apps → Termux:Boot → Permissions after installation.
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /guide-steps -->
   </div><!-- /termux-pane -->
 
   <!-- ADB Enable pane -->
@@ -855,7 +868,7 @@ const histList  = document.getElementById("history-list");
 let cmdHistory = [], histIdx = -1;
 
 // ── Tabs ──
-const panes = { linux: document.getElementById("linux-pane"), termux: document.getElementById("termux-pane"), apk: document.getElementById("apk-pane"), packages: document.getElementById("packages-pane"), carservice: document.getElementById("carservice-pane"), abrp: document.getElementById("abrp-pane"), shell: document.getElementById("terminal-pane") };
+const panes = { linux: document.getElementById("linux-pane"), termux: document.getElementById("termux-pane"), apk: document.getElementById("apk-pane"), packages: document.getElementById("packages-pane"), carservice: document.getElementById("carservice-pane"), abrp: document.getElementById("abrp-pane"), navigate: document.getElementById("navigate-pane"), shell: document.getElementById("terminal-pane") };
 let allPackages = [];
 const quickBar = document.getElementById("quick-bar");
 document.querySelectorAll(".tab").forEach(tab => {
@@ -866,6 +879,7 @@ document.querySelectorAll(".tab").forEach(tab => {
     switchTab(t);
     if (t === "packages" && allPackages.length === 0) loadPackages();
     if (t === "carservice" && !csData) loadCarService();
+    if (t === "termux") checkSshStatus();
   });
 });
 
@@ -1961,6 +1975,384 @@ document.getElementById("abrp-live-btn").addEventListener("click", () => {
     abrpInterval = setInterval(abrpSend, ms);
   }
 });
+
+// ── SSH Status ──
+async function checkSshStatus() {
+  const card = document.getElementById("ssh-status-card");
+  const cmd  = document.getElementById("ssh-connect-cmd");
+  if (!serverReady || !card) return;
+  try {
+    const res  = await fetch(`${SERVER}/ssh-info`);
+    const data = await res.json();
+    if (data.ip) {
+      card.style.display = "flex";
+      const user = data.user || "$(whoami)";
+      cmd.textContent = `ssh -p ${data.sshPort} ${user}@${data.ip}`;
+      // Update border color based on sshd status
+      card.style.borderColor = data.sshRunning ? "var(--green)" : "var(--yellow)";
+      cmd.textContent = data.sshRunning
+        ? `ssh -p ${data.sshPort} ${user}@${data.ip}`
+        : "SSH not running — click Setup SSH";
+    }
+  } catch(e) {}
+}
+
+document.getElementById("ssh-setup-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("ssh-setup-btn");
+  const cmd = document.getElementById("ssh-connect-cmd");
+  btn.disabled = true;
+  btn.textContent = "⟳ Setting up…";
+  cmd.textContent = "Installing openssh and starting sshd…";
+  try {
+    const res  = await fetch(`${SERVER}/ssh-setup`, { method: "POST" });
+    const data = await res.json();
+    btn.textContent = "✓ Done";
+    setTimeout(() => { btn.textContent = "⚙ Setup SSH"; btn.disabled = false; }, 2000);
+    await checkSshStatus();
+  } catch(e) {
+    cmd.textContent = "✗ " + e.message;
+    btn.disabled = false;
+    btn.textContent = "⚙ Setup SSH";
+  }
+});
+
+// ── Termux Setup Wizard ──
+function wizardLog(id, msg, state) {
+  const el = document.getElementById(id);
+  if (el) { el.textContent = msg; el.className = `install-log show ${state}`; }
+}
+
+async function wizardShell(cmd) {
+  const serial = deviceSel.value || null;
+  const res  = await fetch(`${SERVER}/shell`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command: cmd, serial })
+  });
+  return await res.json();
+}
+
+async function wizardRunInTermux(bashCmd) {
+  // Use ADB RUN_COMMAND intent to execute inside Termux
+  const escaped = bashCmd.replace(/'/g, "'\\''");
+  const cmd = `am startservice --user 0 ` +
+    `-n com.termux/.app.RunCommandService ` +
+    `-a com.termux.RUN_COMMAND ` +
+    `--es com.termux.RUN_COMMAND_PATH '/data/data/com.termux/files/usr/bin/bash' ` +
+    `--esa com.termux.RUN_COMMAND_ARGUMENTS '-c,${escaped}' ` +
+    `--es com.termux.RUN_COMMAND_WORKDIR '/data/data/com.termux/files/home' ` +
+    `--ez com.termux.RUN_COMMAND_BACKGROUND 'true'`;
+  return await wizardShell(cmd);
+}
+
+async function wizardInstallTermux(btn) {
+  btn.disabled = true;
+  wizardLog("tw1-log", "⟳ Checking if Termux is installed…", "running");
+  const check = await wizardShell("pm list packages | grep com.termux");
+  if (check.output && check.output.includes("com.termux")) {
+    wizardLog("tw1-log", "✓ Termux already installed", "success");
+    btn.disabled = false;
+    return;
+  }
+  // Fetch from GitHub repo APK list and install
+  wizardLog("tw1-log", "⟳ Looking for Termux APK in store…", "running");
+  try {
+    const res  = await fetch(`${SERVER}/store`);
+    const data = await res.json();
+    const termuxApk = (data.apks || []).find(f => f.name.toLowerCase().includes("termux"));
+    if (!termuxApk) {
+      wizardLog("tw1-log", "✗ Termux APK not found in store. Add it to your GitHub repo first.", "error");
+      btn.disabled = false;
+      return;
+    }
+    wizardLog("tw1-log", `⟳ Downloading ${termuxApk.name} from GitHub…`, "running");
+    const dlRes = await fetch(`https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/${encodeURIComponent(termuxApk.name)}`);
+    if (!dlRes.ok) throw new Error(`Download failed: ${dlRes.status}`);
+    const blob = await dlRes.blob();
+    wizardLog("tw1-log", "⟳ Installing via ADB…", "running");
+    const serial = deviceSel.value || null;
+    const headers = { "X-Filename": termuxApk.name };
+    if (serial) headers["X-Device-Serial"] = serial;
+    const installRes = await fetch(`${SERVER}/install`, { method: "POST", headers, body: blob });
+    const installData = await installRes.json();
+    const ok = installData.success && installData.output.includes("Success");
+    wizardLog("tw1-log", ok ? "✓ Termux installed!" : "✗ " + installData.output, ok ? "success" : "error");
+  } catch(e) {
+    wizardLog("tw1-log", "✗ " + e.message, "error");
+  }
+  btn.disabled = false;
+}
+
+async function wizardGrantPermission(btn) {
+  btn.disabled = true;
+  wizardLog("tw2-log", "⟳ Granting RUN_COMMAND permission…", "running");
+  try {
+    // Enable allow-external-apps in Termux properties
+    const mk = await wizardShell("mkdir -p /data/data/com.termux/files/home/.termux");
+    await wizardShell("echo 'allow-external-apps=true' > /data/data/com.termux/files/home/.termux/termux.properties");
+    const r = await wizardShell("pm grant com.termux com.termux.permission.RUN_COMMAND");
+    const ok = !r.output || !r.output.toLowerCase().includes("error");
+    wizardLog("tw2-log", ok ? "✓ Permission granted" : "✗ " + r.output, ok ? "success" : "error");
+  } catch(e) {
+    wizardLog("tw2-log", "✗ " + e.message, "error");
+  }
+  btn.disabled = false;
+}
+
+
+
+async function wizardRunStartSh(btn) {
+  btn.disabled = true;
+  wizardLog("tw3-log", "⟳ Running start.sh inside Termux…", "running");
+  try {
+    const r = await wizardRunInTermux(
+      "curl -s https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/start.sh -o ~/start.sh && bash ~/start.sh"
+    );
+    wizardLog("tw3-log", "✓ start.sh launched in Termux background. Server starting on port 3000…", "success");
+    // Poll for server to come up
+    setTimeout(async () => {
+      const ok = await checkServer();
+      if (ok) wizardLog("tw3-log", "✓ Server is up! JS dot should be green.", "success");
+    }, 8000);
+  } catch(e) {
+    wizardLog("tw3-log", "✗ " + e.message, "error");
+  }
+  btn.disabled = false;
+}
+
+async function wizardSetupBoot(btn) {
+  btn.disabled = true;
+  wizardLog("tw4-log", "⟳ Installing Termux:Boot…", "running");
+  try {
+    // Step 1: install termux-boot app via store
+    const serial = deviceSel.value || null;
+    const res  = await fetch(`${SERVER}/store`);
+    const data = await res.json();
+    const bootApk = (data.apks || []).find(f => f.name.toLowerCase().includes("termux-boot") || f.name.toLowerCase().includes("termux.boot"));
+
+    if (bootApk) {
+      wizardLog("tw4-log", `⟳ Installing ${bootApk.name}…`, "running");
+      const dlRes = await fetch(`https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/${encodeURIComponent(bootApk.name)}`);
+      const blob = await dlRes.blob();
+      const headers = { "X-Filename": bootApk.name };
+      if (serial) headers["X-Device-Serial"] = serial;
+      await fetch(`${SERVER}/install`, { method: "POST", headers, body: blob });
+    } else {
+      wizardLog("tw4-log", "⚠ Termux:Boot APK not in store — skipping install, writing boot script anyway…", "running");
+    }
+
+    // Step 2: create boot script via RUN_COMMAND
+    wizardLog("tw4-log", "⟳ Writing boot script…", "running");
+    const bootScript = [
+      "#!/data/data/com.termux/files/usr/bin/bash",
+      "# Re-enable ADB on port 5555",
+      "setprop service.adb.tcp.port 5555",
+      "stop adbd",
+      "start adbd",
+      "sleep 3",
+      "# Start the server",
+      "cd ~/Sealion7Store && node adb-server.js &"
+    ].join("\n");
+
+    const r = await wizardRunInTermux(
+      `mkdir -p ~/.termux/boot && printf '${bootScript.replace(/'/g, "'\''")}' > ~/.termux/boot/start-server.sh && chmod +x ~/.termux/boot/start-server.sh && echo DONE`
+    );
+
+    wizardLog("tw4-log",
+      "✓ Boot script written to ~/.termux/boot/start-server.sh\n\n" +
+      "⚠ Now go to:\nAndroid Settings → Apps → Termux:Boot → Permissions\nEnable: Run at startup",
+      "success"
+    );
+  } catch(e) {
+    wizardLog("tw4-log", "✗ " + e.message, "error");
+  }
+  btn.disabled = false;
+}
+
+// ── Navigate / AI Voice tab ──
+let navRecognition = null;
+let navListening   = false;
+
+const micBtn        = document.getElementById("nav-mic-btn");
+const navTranscript = document.getElementById("nav-transcript");
+const navStatus     = document.getElementById("nav-status");
+const navSuggestions= document.getElementById("nav-suggestions");
+
+// ── Speech Recognition setup ──
+function navInitSpeech() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    navStatus.textContent = "⚠ Speech recognition not supported in this browser.";
+    micBtn.disabled = true;
+    return;
+  }
+  navRecognition = new SpeechRecognition();
+  navRecognition.lang = "en-US";
+  navRecognition.interimResults = true;
+  navRecognition.maxAlternatives = 1;
+
+  navRecognition.onstart = () => {
+    navListening = true;
+    micBtn.style.background = "var(--accent)";
+    micBtn.style.color = "#000";
+    micBtn.textContent = "⏹";
+    navStatus.textContent = "Listening…";
+    navTranscript.textContent = "";
+  };
+
+  navRecognition.onresult = (e) => {
+    const interim = Array.from(e.results).map(r => r[0].transcript).join(" ");
+    navTranscript.textContent = interim;
+    if (e.results[e.results.length - 1].isFinal) {
+      navRecognition.stop();
+      navProcessSpeech(interim.trim());
+    }
+  };
+
+  navRecognition.onerror = (e) => {
+    navStatus.textContent = `⚠ ${e.error}`;
+    navResetMic();
+  };
+
+  navRecognition.onend = () => navResetMic();
+}
+
+function navResetMic() {
+  navListening = false;
+  micBtn.style.background = "var(--accent-dim)";
+  micBtn.style.color = "var(--accent)";
+  micBtn.textContent = "🎙";
+}
+
+micBtn.addEventListener("click", () => {
+  if (!navRecognition) navInitSpeech();
+  if (!navRecognition) return;
+  if (navListening) { navRecognition.stop(); return; }
+  navSuggestions.innerHTML = "";
+  navRecognition.start();
+});
+
+document.getElementById("nav-clear-btn").addEventListener("click", () => {
+  navTranscript.textContent = "Press 🎙 and say where you want to go…";
+  navStatus.textContent = "";
+  navSuggestions.innerHTML = "";
+});
+
+// ── AI: extract destination and search ──
+async function navProcessSpeech(text) {
+  navStatus.innerHTML = `<span style="color:var(--muted);">⟳ AI processing: "${text}"</span>`;
+  navSuggestions.innerHTML = "";
+
+  try {
+    // Call Claude via Anthropic API to extract destination
+    const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 200,
+        system: "You are a navigation assistant in a car. Extract the destination from what the user says. Reply with ONLY a JSON object: {\"destination\": \"<place name>\", \"query\": \"<search query for geocoding>\"}. If no destination, reply {\"destination\": null}.",
+        messages: [{ role: "user", content: text }]
+      })
+    });
+    const aiData = await aiRes.json();
+    const raw = aiData.content?.[0]?.text || "{}";
+    let parsed;
+    try { parsed = JSON.parse(raw.replace(/```json|```/g, "").trim()); }
+    catch { parsed = {}; }
+
+    if (!parsed.destination) {
+      navStatus.innerHTML = `<span style="color:var(--yellow);">⚠ Couldn't find a destination in: "${text}". Try saying "I want to go to [place]".</span>`;
+      return;
+    }
+
+    navStatus.innerHTML = `<span style="color:var(--muted);">⟳ Searching for "${parsed.destination}"…</span>`;
+
+    // Search with Nominatim (OpenStreetMap) — free, no API key
+    const searchRes = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(parsed.query || parsed.destination)}&format=json&limit=5&addressdetails=1`,
+      { headers: { "Accept-Language": "en", "User-Agent": "Sealion7-Navigator" } }
+    );
+    const places = await searchRes.json();
+
+    if (!places.length) {
+      navStatus.innerHTML = `<span style="color:var(--red);">✗ No results found for "${parsed.destination}".</span>`;
+      return;
+    }
+
+    navStatus.innerHTML = `<span style="color:var(--green);">✓ Found ${places.length} results for "${parsed.destination}"</span>`;
+    navRenderSuggestions(places, parsed.destination);
+
+  } catch(e) {
+    navStatus.innerHTML = `<span style="color:var(--red);">✗ ${e.message}</span>`;
+  }
+}
+
+// ── Render location suggestions ──
+function navRenderSuggestions(places, query) {
+  navSuggestions.innerHTML = "";
+
+  const header = document.createElement("div");
+  header.style.cssText = "font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;";
+  header.textContent = `Results for "${query}" — tap to open in ABRP`;
+  navSuggestions.appendChild(header);
+
+  places.forEach(place => {
+    const addr = place.address || {};
+    const line1 = place.display_name.split(",")[0];
+    const line2 = [addr.road, addr.city || addr.town || addr.village, addr.country].filter(Boolean).join(", ");
+
+    const card = document.createElement("div");
+    card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:12px;";
+    card.onmouseenter = () => { card.style.borderColor = "var(--accent)"; card.style.background = "var(--surface2)"; };
+    card.onmouseleave = () => { card.style.borderColor = "var(--border)"; card.style.background = "var(--surface)"; };
+
+    // Category icon
+    const typeIcons = { restaurant:"🍽", hotel:"🏨", hospital:"🏥", fuel:"⛽", parking:"🅿", shop:"🛍", amenity:"📍", tourism:"📸", default:"📍" };
+    const icon = typeIcons[place.type] || typeIcons[place.class] || typeIcons.default;
+
+    card.innerHTML = `
+      <span style="font-size:24px;flex-shrink:0;">${icon}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${line1}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${line2}</div>
+        <div style="font-size:10px;color:var(--muted2);margin-top:2px;font-family:var(--mono);">${parseFloat(place.lat).toFixed(5)}, ${parseFloat(place.lon).toFixed(5)}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
+        <button class="install-btn" style="font-size:11px;padding:6px 12px;" onclick="event.stopPropagation();">🗺 ABRP</button>
+        <button class="hdr-btn" style="font-size:11px;" onclick="event.stopPropagation();">📋 Copy</button>
+      </div>
+    `;
+
+    // ABRP button
+    card.querySelector(".install-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const abrpUrl = `https://abetterrouteplanner.com/?plan_uuid=&dest_lat=${place.lat}&dest_lng=${place.lon}&dest_name=${encodeURIComponent(line1)}`;
+      navStatus.innerHTML = `<span style="color:var(--green);">✓ Opening ABRP for "${line1}"</span>`;
+      // Launch ABRP via ADB intent on the car
+      const intentCmd = `am start -a android.intent.action.VIEW -d "${abrpUrl}"`;
+      fetch(`${SERVER}/shell`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: intentCmd, serial: deviceSel.value || null })
+      }).then(r => r.json()).then(d => {
+        if (!d.success) {
+          // Fallback: open in browser
+          window.open(abrpUrl, "_blank");
+        }
+      }).catch(() => window.open(abrpUrl, "_blank"));
+    });
+
+    // Copy button
+    card.querySelectorAll(".hdr-btn")[0].addEventListener("click", (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(`${line1}\n${line2}\n${place.lat},${place.lon}`);
+      navStatus.innerHTML = `<span style="color:var(--green);">✓ Copied to clipboard</span>`;
+    });
+
+    navSuggestions.appendChild(card);
+  });
+}
 
 // ── Init ──
 serverUrlInput.value = SERVER;
