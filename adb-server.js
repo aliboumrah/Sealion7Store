@@ -324,6 +324,16 @@ const server = http.createServer(async (req, res) => {
   // ── GET /carservice — run dumpsys car_service and return parsed JSON ──
   if (req.method === "GET" && pathname === "/carservice") {
     const serial = (parsed.query && parsed.query.serial) || null;
+    // Load persistent property history (survives restarts)
+    const fs = require("fs");
+    const cacheFile = require("path").join(__dirname, "car_props_cache.json");
+    let cachedProps = {};
+    try {
+      if (fs.existsSync(cacheFile)) {
+        cachedProps = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+      }
+    } catch(e) {}
+
     const result = await runAdb(["shell", "dumpsys", "car_service"], serial);
     if (!result.success) {
       res.writeHead(200);

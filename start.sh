@@ -12,8 +12,8 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 REPO_DIR="$HOME/Sealion7Store"
-AUTOSTART_MARKER="# >>> Sealion7Store autostart <<<"
 BASHRC="$HOME/.bashrc"
+AUTOSTART_MARKER="# >>> Sealion7Store autostart <<<"
 
 echo -e "\033[36m"
 cat << 'ASCIIART'
@@ -81,52 +81,76 @@ echo ""
 if ! grep -qF "$AUTOSTART_MARKER" "$BASHRC" 2>/dev/null; then
   echo "" >> "$BASHRC"
   echo "$AUTOSTART_MARKER" >> "$BASHRC"
-  echo 'curl -s https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/start.sh -o ~/start.sh && bash ~/start.sh' >> "$BASHRC"
+  echo 'bash ~/start.sh' >> "$BASHRC"
   echo "$AUTOSTART_MARKER" >> "$BASHRC"
   echo -e "${GREEN}✓ Auto-start registered in ~/.bashrc${NC}"
-  echo -e "  ${YELLOW}From now on this script runs automatically every time Termux opens.${NC}"
-  echo ""
-else
-  echo -e "${BLUE}ℹ Auto-start already registered in ~/.bashrc${NC}"
-  echo ""
 fi
 
 # ── Step 1: Update & upgrade ──
-echo -e "${BLUE}[1/5]${NC} Updating Termux packages..."
+echo -e "${BLUE}[1/6]${NC} Updating Termux packages..."
 pkg update -y -o Dpkg::Options::="--force-confold" > /dev/null 2>&1
 pkg upgrade -y -o Dpkg::Options::="--force-confold" > /dev/null 2>&1
 echo -e "      ${GREEN}✓ Done${NC}"
 
 # ── Step 2: Install git ──
 if ! command -v git &> /dev/null; then
-  echo -e "${BLUE}[2/5]${NC} Installing git..."
+  echo -e "${BLUE}[2/6]${NC} Installing git..."
   pkg install git -y > /dev/null 2>&1
   echo -e "      ${GREEN}✓ git installed${NC}"
 else
-  echo -e "${BLUE}[2/5]${NC} git already installed ${GREEN}✓${NC}"
+  echo -e "${BLUE}[2/6]${NC} git already installed ${GREEN}✓${NC}"
 fi
 
 # ── Step 3: Install Node.js ──
 if ! command -v node &> /dev/null; then
-  echo -e "${BLUE}[3/5]${NC} Installing Node.js..."
+  echo -e "${BLUE}[3/6]${NC} Installing Node.js..."
   pkg install nodejs -y > /dev/null 2>&1
   echo -e "      ${GREEN}✓ Node.js installed${NC}"
 else
-  NODE_VER=$(node --version)
-  echo -e "${BLUE}[3/5]${NC} Node.js $NODE_VER already installed ${GREEN}✓${NC}"
+  echo -e "${BLUE}[3/6]${NC} Node.js $(node --version) ${GREEN}✓${NC}"
 fi
 
 # ── Step 4: Install ADB ──
 if ! command -v adb &> /dev/null; then
-  echo -e "${BLUE}[4/5]${NC} Installing ADB..."
+  echo -e "${BLUE}[4/6]${NC} Installing ADB..."
   pkg install android-tools -y > /dev/null 2>&1
   echo -e "      ${GREEN}✓ ADB installed${NC}"
 else
-  echo -e "${BLUE}[4/5]${NC} ADB already installed ${GREEN}✓${NC}"
+  echo -e "${BLUE}[4/6]${NC} ADB already installed ${GREEN}✓${NC}"
 fi
 
-# ── Step 5: Pull latest from GitHub ──
-echo -e "${BLUE}[5/5]${NC} Pulling latest from GitHub..."
+# ── Step 5: Setup SSH ──
+echo -e "${BLUE}[5/6]${NC} Setting up SSH..."
+if ! command -v sshd &> /dev/null; then
+  pkg install openssh -y > /dev/null 2>&1
+  echo -e "      ${GREEN}✓ openssh installed${NC}"
+else
+  echo -e "      openssh already installed ${GREEN}✓${NC}"
+fi
+
+# Generate SSH keys if missing
+if [ ! -f "$HOME/.ssh/id_rsa" ]; then
+  mkdir -p "$HOME/.ssh"
+  ssh-keygen -t rsa -b 2048 -f "$HOME/.ssh/id_rsa" -N "" > /dev/null 2>&1
+  echo -e "      ${GREEN}✓ SSH keys generated${NC}"
+fi
+
+# Start sshd if not running
+if ! pgrep -x sshd > /dev/null 2>&1; then
+  sshd
+  echo -e "      ${GREEN}✓ SSH started on port 8022${NC}"
+else
+  echo -e "      SSH already running ${GREEN}✓${NC}"
+fi
+
+# Get IP
+CAR_IP=$(ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 | head -1)
+if [ -z "$CAR_IP" ]; then
+  CAR_IP=$(ip addr show 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | cut -d/ -f1 | head -1)
+fi
+
+# ── Step 6: Pull latest from GitHub ──
+echo -e "${BLUE}[6/6]${NC} Pulling latest from GitHub..."
 if [ -d "$REPO_DIR/.git" ]; then
   cd "$REPO_DIR"
   git pull --rebase origin main 2>&1 | tail -1
@@ -139,21 +163,29 @@ fi
 
 cd "$REPO_DIR"
 
-# ── Connect ADB ──
+# ── Re-enable ADB on port 5555 ──
 echo ""
-echo -e "${YELLOW}Connecting ADB to localhost:5555...${NC}"
+echo -e "${YELLOW}Re-enabling ADB on port 5555...${NC}"
+setprop service.adb.tcp.port 5555 2>/dev/null
+stop adbd 2>/dev/null
+start adbd 2>/dev/null
+sleep 1
 adb connect localhost:5555 2>&1
 if adb devices | grep -q "localhost:5555"; then
   echo -e "${GREEN}✓ ADB connected${NC}"
 else
-  echo -e "${RED}⚠ ADB not connected. Enable from Settings → System → Version → tap Restore 10x${NC}"
+  echo -e "${RED}⚠ ADB not connected — enable from car screen if first time${NC}"
 fi
 
 # ── Start server ──
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "  Server starting on ${YELLOW}http://localhost:3000${NC}"
-echo -e "  Stop: use the ${RED}⏹ Stop${NC} button in the UI"
+echo -e "  Server: ${YELLOW}http://localhost:3000${NC}"
+if [ -n "$CAR_IP" ]; then
+  echo -e "  WiFi:   ${YELLOW}http://$CAR_IP:3000${NC}"
+  echo -e "  SSH:    ${YELLOW}ssh -p 8022 $(whoami)@$CAR_IP${NC}"
+fi
+echo -e "  Stop:   use the ${RED}⏹ Stop${NC} button in the UI"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
