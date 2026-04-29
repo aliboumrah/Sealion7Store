@@ -119,38 +119,8 @@ else
   echo -e "${BLUE}[4/6]${NC} ADB already installed ${GREEN}✓${NC}"
 fi
 
-# ── Step 5: Setup SSH ──
-echo -e "${BLUE}[5/6]${NC} Setting up SSH..."
-if ! command -v sshd &> /dev/null; then
-  pkg install openssh -y > /dev/null 2>&1
-  echo -e "      ${GREEN}✓ openssh installed${NC}"
-else
-  echo -e "      openssh already installed ${GREEN}✓${NC}"
-fi
-
-# Generate SSH keys if missing
-if [ ! -f "$HOME/.ssh/id_rsa" ]; then
-  mkdir -p "$HOME/.ssh"
-  ssh-keygen -t rsa -b 2048 -f "$HOME/.ssh/id_rsa" -N "" > /dev/null 2>&1
-  echo -e "      ${GREEN}✓ SSH keys generated${NC}"
-fi
-
-# Start sshd if not running
-if ! pgrep -x sshd > /dev/null 2>&1; then
-  sshd
-  echo -e "      ${GREEN}✓ SSH started on port 8022${NC}"
-else
-  echo -e "      SSH already running ${GREEN}✓${NC}"
-fi
-
-# Get IP
-CAR_IP=$(ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 | head -1)
-if [ -z "$CAR_IP" ]; then
-  CAR_IP=$(ip addr show 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | cut -d/ -f1 | head -1)
-fi
-
-# ── Step 6: Pull latest from GitHub ──
-echo -e "${BLUE}[6/6]${NC} Pulling latest from GitHub..."
+# ── Step 5: Pull latest from GitHub ──
+echo -e "${BLUE}[5/5]${NC} Pulling latest from GitHub..."
 if [ -d "$REPO_DIR/.git" ]; then
   cd "$REPO_DIR"
   git pull --rebase origin main 2>&1 | tail -1
@@ -162,6 +132,12 @@ else
 fi
 
 cd "$REPO_DIR"
+
+# ── Get WiFi IP ──
+CAR_IP=$(ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 | head -1)
+if [ -z "$CAR_IP" ]; then
+  CAR_IP=$(ip addr show 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | cut -d/ -f1 | head -1)
+fi
 
 # ── Re-enable ADB on port 5555 ──
 echo ""
@@ -183,7 +159,6 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo -e "  Server: ${YELLOW}http://localhost:3000${NC}"
 if [ -n "$CAR_IP" ]; then
   echo -e "  WiFi:   ${YELLOW}http://$CAR_IP:3000${NC}"
-  echo -e "  SSH:    ${YELLOW}ssh -p 8022 $(whoami)@$CAR_IP${NC}"
 fi
 echo -e "  Stop:   use the ${RED}⏹ Stop${NC} button in the UI"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
