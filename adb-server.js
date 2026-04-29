@@ -422,28 +422,32 @@ const server = http.createServer(async (req, res) => {
       idToName[m[1].toLowerCase()] = m[2].trim();
     }
 
-    // Parse events
-    // string field stops at comma or newline — handles inline entries like "string:  event count:5, lastEvent:..."
+    // Parse events — split into chunks of ~100 events to avoid JS regex limits
     const evRe = /lastEvent:Property:(0x[0-9a-fA-F]+),status:\s*(\d+),timestamp:(\d+),zone:[^,]+,floatValues:\s*\[([^\]]*)\],int32Values:\s*\[([^\]]*)\],int64Values:\s*\[([^\]]*)\],bytes:\s*\[[^\]]*\],string:\s*([^,\r\n]*)/g;
 
     const properties = {};
-    for (const m of evBody.matchAll(evRe)) {
+
+    // Split evBody into individual event chunks to avoid regex engine limits
+    // Each event starts with "event count:"
+    const eventChunks = evBody.split(/(?=event count:)/);
+    for (const chunk of eventChunks) {
+      const m = evRe.exec(chunk);
+      evRe.lastIndex = 0; // reset for next chunk
+      if (!m) continue;
+
       const id     = m[1].toLowerCase();
       const status = parseInt(m[2]);
       const floats = m[4].trim().split(",").map(v => v.trim()).filter(Boolean).map(Number);
       const ints   = m[5].trim().split(",").map(v => v.trim()).filter(Boolean).map(Number);
-      const str    = m[7].trim();
+      const str    = m[7] ? m[7].trim() : "";
       const name   = idToName[id] || id;
 
-      // Pick value: prefer floats if non-empty, else ints, else string
-      // Note: some properties like SOC are in int32Values only
       let value;
       if (floats.length > 0 && floats.some(v => v !== 0)) {
         value = floats.length === 1 ? floats[0] : floats;
       } else if (ints.length > 0) {
         value = ints.length === 1 ? ints[0] : ints;
       } else if (floats.length > 0) {
-        // floats exist but all zero — still use them
         value = floats.length === 1 ? floats[0] : floats;
       } else if (str) {
         value = str;
