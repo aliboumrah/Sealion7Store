@@ -324,9 +324,10 @@ const server = http.createServer(async (req, res) => {
   // ── GET /carservice — run dumpsys car_service and return parsed JSON ──
   if (req.method === "GET" && pathname === "/carservice") {
     const serial = (parsed.query && parsed.query.serial) || null;
-    // Load persistent property history (survives restarts)
-    const fs = require("fs");
-    const cacheFile = require("path").join(__dirname, "car_props_cache.json");
+    // Load persistent cache (built by background poller every 60s)
+    const fs   = require("fs");
+    const path = require("path");
+    const cacheFile = path.join(__dirname, "car_props_cache.json");
     let cachedProps = {};
     try {
       if (fs.existsSync(cacheFile)) {
@@ -334,6 +335,7 @@ const server = http.createServer(async (req, res) => {
       }
     } catch(e) {}
 
+    // Also run a fresh dump to get latest values
     const result = await runAdb(["shell", "dumpsys", "car_service"], serial);
     if (!result.success) {
       res.writeHead(200);
@@ -709,6 +711,24 @@ const server = http.createServer(async (req, res) => {
     } catch(e) {
       res.writeHead(200);
       res.end(JSON.stringify({ places: [], error: e.message }));
+    }
+    return;
+  }
+
+  // ── GET /history — return car property history ──
+  if (req.method === "GET" && pathname === "/history") {
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const histFile = path.join(__dirname, "car_props_history.json");
+      const history = fs.existsSync(histFile)
+        ? JSON.parse(fs.readFileSync(histFile, "utf8"))
+        : [];
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, history, count: history.length }));
+    } catch(e) {
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: false, history: [], error: e.message }));
     }
     return;
   }
