@@ -1674,7 +1674,8 @@ async function loadCarService() {
     const data = await res.json();
     if (!data.success) throw new Error("Failed to load properties");
     csProperties = data.properties;
-    status.textContent = `${data.count} properties · ${new Date().toLocaleTimeString()}`;
+    const dbg = data.debug || {};
+    status.textContent = `${data.count} props · chunks:${dbg.evChunks||'?'} evLen:${dbg.evBodyLen||'?'} · ${new Date().toLocaleTimeString()}`;
     renderCsDashboard();
     renderCsList();
   } catch(e) {
