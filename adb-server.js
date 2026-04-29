@@ -615,62 +615,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── GET /ssh-info — return SSH connection details ──
-  if (req.method === "GET" && pathname === "/ssh-info") {
-    const { execSync } = require("child_process");
-    let ip = "";
-    try {
-      ip = execSync("ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 | head -1").toString().trim();
-      if (!ip) ip = execSync("ip addr show 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | cut -d/ -f1 | head -1").toString().trim();
-    } catch(e) {}
-    const sshRunning = (() => { try { execSync("pgrep -x sshd"); return true; } catch { return false; } })();
-    res.writeHead(200);
-    res.end(JSON.stringify({ ip, sshRunning, sshPort: 8022, user: process.env.USER || "u0_a" }));
-    return;
-  }
-
-  // ── POST /ssh-setup — install and start SSH ──
-  if (req.method === "POST" && pathname === "/ssh-setup") {
-    const steps = [];
-    const run = (cmd) => runShell(cmd);
-    const r1 = await run("pkg install openssh -y");
-    steps.push({ cmd: "install openssh", ok: r1.success });
-    const r2 = await run("[ -f ~/.ssh/id_rsa ] || ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa -N ''");
-    steps.push({ cmd: "generate keys", ok: r2.success });
-    const r3 = await run("pgrep -x sshd || sshd");
-    steps.push({ cmd: "start sshd", ok: r3.success });
-    // Get SSH info
-    const { execSync } = require("child_process");
-    let ip = "";
-    try { ip = execSync("ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1").toString().trim(); } catch {}
-    res.writeHead(200);
-    res.end(JSON.stringify({ success: true, steps, ip, port: 8022 }));
-    return;
-  }
-
-  // ── GET /navigate — server-side Nominatim search (avoids CORS) ──
-  if (req.method === "GET" && pathname === "/navigate") {
-    const q = parsed.query && parsed.query.q;
-    if (!q) { res.writeHead(400); res.end(JSON.stringify({ error: "Missing q" })); return; }
-    try {
-      const https = require("https");
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&addressdetails=1`;
-      const data = await new Promise((resolve, reject) => {
-        https.get(url, { headers: { "User-Agent": "Sealion7-ADB-Shell", "Accept-Language": "en" } }, (r) => {
-          let body = "";
-          r.on("data", c => body += c);
-          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
-        }).on("error", reject);
-      });
-      res.writeHead(200);
-      res.end(JSON.stringify({ places: data }));
-    } catch(e) {
-      res.writeHead(200);
-      res.end(JSON.stringify({ places: [], error: e.message }));
-    }
-    return;
-  }
-
   // ── POST /stop — gracefully stop the server from the UI ──
   if (req.method === "POST" && pathname === "/stop") {
     res.writeHead(200);
