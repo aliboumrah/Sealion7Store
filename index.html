@@ -2183,244 +2183,161 @@ async function wizardSetupBoot(btn) {
   btn.disabled = false;
 }
 
-// ── Navigate / AI Voice tab ──
-let navRecognition = null;
-let navListening   = false;
+// ── Navigate tab — fully self-contained ──
+(function() {
+  const micBtn     = document.getElementById("nav-mic-btn");
+  const textInput  = document.getElementById("nav-text-input");
+  const goBtn      = document.getElementById("nav-go-btn");
+  const clearBtn   = document.getElementById("nav-clear-btn");
+  const statusEl   = document.getElementById("nav-status");
+  const suggestEl  = document.getElementById("nav-suggestions");
 
-const micBtn         = document.getElementById("nav-mic-btn");
-const navTextInput   = document.getElementById("nav-text-input");
-const navStatus      = document.getElementById("nav-status");
-const navSuggestions = document.getElementById("nav-suggestions");
+  let recognition  = null;
+  let listening    = false;
 
-function navSetStatus(msg, color) {
-  navStatus.style.color = color || "var(--muted)";
-  navStatus.textContent = msg;
-}
-
-// ── Speech Recognition ──
-function navInitSpeech() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    navSetStatus("⚠ Voice not supported in this browser — use the text box instead.", "var(--yellow)");
-    micBtn.style.opacity = "0.3";
-    micBtn.disabled = true;
-    return false;
-  }
-  navRecognition = new SR();
-  navRecognition.lang        = "en-US";
-  navRecognition.continuous  = false;
-  navRecognition.interimResults = true;
-
-  navRecognition.onstart = () => {
-    navListening = true;
-    micBtn.style.background = "var(--red)";
-    micBtn.style.borderColor = "var(--red)";
-    micBtn.style.color = "#fff";
-    micBtn.textContent = "⏹";
-    navSetStatus("🎙 Listening… speak now", "var(--accent)");
-    navTextInput.placeholder = "Listening…";
-  };
-
-  navRecognition.onresult = (e) => {
-    const transcript = Array.from(e.results).map(r => r[0].transcript).join(" ");
-    navTextInput.value = transcript;
-    if (e.results[e.results.length - 1].isFinal) {
-      navRecognition.stop();
-      navProcessSpeech(transcript.trim());
-    }
-  };
-
-  navRecognition.onerror = (e) => {
-    const msgs = {
-      "not-allowed": "Microphone permission denied. Use the text box instead.",
-      "no-speech":   "No speech detected. Try again or type your destination.",
-      "network":     "Network error during speech recognition.",
-      "aborted":     "Speech recognition stopped."
-    };
-    navSetStatus("⚠ " + (msgs[e.error] || e.error), "var(--yellow)");
-    navResetMic();
-  };
-
-  navRecognition.onend = () => {
-    navResetMic();
-    navTextInput.placeholder = 'Type or say "I want to go to Paris"…';
-  };
-  return true;
-}
-
-function navResetMic() {
-  navListening = false;
-  micBtn.style.background  = "var(--accent-dim)";
-  micBtn.style.borderColor = "var(--accent)";
-  micBtn.style.color       = "var(--accent)";
-  micBtn.textContent       = "🎙";
-}
-
-micBtn.addEventListener("click", () => {
-  if (navListening) {
-    navRecognition && navRecognition.stop();
-    return;
+  function setStatus(msg, color) {
+    statusEl.textContent  = msg;
+    statusEl.style.color  = color || "var(--muted)";
   }
 
-  // Check support first
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    navSetStatus("⚠ Voice not supported on this browser. Use the text box ↑", "var(--yellow)");
-    navTextInput.focus();
-    return;
-  }
-
-  if (!navRecognition && !navInitSpeech()) return;
-
-  try {
-    navSuggestions.innerHTML = "";
-    navSetStatus("⟳ Starting microphone…");
-    navRecognition.start();
-  } catch(e) {
-    // Already started or other error
-    if (e.name === "InvalidStateError") {
-      navSetStatus("⚠ Mic already active — try again", "var(--yellow)");
-      navRecognition = null; // reset so next click reinitializes
-    } else {
-      navSetStatus("⚠ Mic error: " + e.message + " — use text box instead", "var(--yellow)");
-      navTextInput.focus();
+  // ── Search via Nominatim (direct fetch — no server needed) ──
+  async function search(query) {
+    setStatus(`⟳ Searching for "${query}"…`);
+    suggestEl.innerHTML = "";
+    try {
+      const url = "https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&q=" + encodeURIComponent(query);
+      const r   = await fetch(url, { headers: { "Accept-Language": "en" } });
+      const places = await r.json();
+      if (!places || !places.length) {
+        setStatus(`✗ No results for "${query}"`, "var(--red)");
+        return;
+      }
+      setStatus(`✓ ${places.length} results for "${query}"`, "var(--green)");
+      renderResults(places, query);
+    } catch(e) {
+      setStatus("✗ " + e.message, "var(--red)");
     }
   }
-});
 
-// Text input — Go button and Enter key
-document.getElementById("nav-go-btn").addEventListener("click", () => {
-  const txt = navTextInput.value.trim();
-  if (txt) { navSuggestions.innerHTML = ""; navProcessSpeech(txt); }
-});
-navTextInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    const txt = navTextInput.value.trim();
-    if (txt) { navSuggestions.innerHTML = ""; navProcessSpeech(txt); }
+  // ── Extract destination from natural speech ──
+  function extractDest(text) {
+    const m = text.match(/(?:go to|navigate to|take me to|drive to|directions? to|route to|i want to go to|head to|find|open)\s+(.+)/i);
+    return m ? m[1].trim().replace(/[?.!]$/, "") : text.trim().replace(/[?.!]$/, "");
   }
-});
 
-document.getElementById("nav-clear-btn").addEventListener("click", () => {
-  navTextInput.value = "";
-  navSetStatus("");
-  navSuggestions.innerHTML = "";
-});
+  // ── Render result cards ──
+  function renderResults(places, query) {
+    suggestEl.innerHTML = "";
+    const icons = { restaurant:"🍽", hotel:"🏨", hospital:"🏥", fuel:"⛽", parking:"🅿", shop:"🛍", default:"📍" };
+    places.forEach(function(p) {
+      const name  = p.display_name.split(",")[0];
+      const addr  = p.display_name.split(",").slice(1, 3).join(",").trim();
+      const icon  = icons[p.type] || icons[p.class] || icons.default;
+      const card  = document.createElement("div");
+      card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:border-color .15s;";
+      card.onmouseenter = function() { card.style.borderColor = "var(--accent)"; };
+      card.onmouseleave = function() { card.style.borderColor = "var(--border)"; };
+      card.innerHTML = [
+        '<span style="font-size:24px;flex-shrink:0;">' + icon + '</span>',
+        '<div style="flex:1;min-width:0;">',
+          '<div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + name + '</div>',
+          '<div style="font-size:11px;color:var(--muted);margin-top:2px;">' + addr + '</div>',
+          '<div style="font-size:10px;color:var(--muted2);margin-top:2px;font-family:var(--mono);">' + parseFloat(p.lat).toFixed(4) + ', ' + parseFloat(p.lon).toFixed(4) + '</div>',
+        '</div>',
+        '<button class="install-btn" style="font-size:11px;padding:6px 12px;flex-shrink:0;">&#x1F5FA; ABRP</button>'
+      ].join('');
 
-// ── AI: extract destination and search ──
-async function navProcessSpeech(text) {
-  navStatus.innerHTML = `<span style="color:var(--muted);">⟳ AI processing: "${text}"</span>`;
-  navSuggestions.innerHTML = "";
+      // Open ABRP on click
+      card.querySelector(".install-btn").addEventListener("click", function(e) {
+        e.stopPropagation();
+        const url = "https://abetterrouteplanner.com/?plan_uuid=&dest_lat=" + p.lat + "&dest_lng=" + p.lon + "&dest_name=" + encodeURIComponent(name);
+        // Try ADB intent to open on car screen
+        var serial = document.getElementById("device-select").value || null;
+        fetch(SERVER + "/shell", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: 'am start -a android.intent.action.VIEW -d "' + url + '"', serial: serial })
+        }).catch(function() {});
+        // Also open in current browser
+        window.open(url, "_blank");
+        setStatus("✓ Opening ABRP → " + name, "var(--green)");
+      });
 
-  try {
-    // Call Claude via Anthropic API to extract destination
-    const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 200,
-        system: "You are a navigation assistant in a car. Extract the destination from what the user says. Reply with ONLY a JSON object: {\"destination\": \"<place name>\", \"query\": \"<search query for geocoding>\"}. If no destination, reply {\"destination\": null}.",
-        messages: [{ role: "user", content: text }]
-      })
+      suggestEl.appendChild(card);
     });
-    const aiData = await aiRes.json();
-    const raw = aiData.content?.[0]?.text || "{}";
-    let parsed;
-    try { parsed = JSON.parse(raw.replace(/```json|```/g, "").trim()); }
-    catch { parsed = {}; }
-
-    if (!parsed.destination) {
-      navStatus.innerHTML = `<span style="color:var(--yellow);">⚠ Couldn't find a destination in: "${text}". Try saying "I want to go to [place]".</span>`;
-      return;
-    }
-
-    navStatus.innerHTML = `<span style="color:var(--muted);">⟳ Searching for "${parsed.destination}"…</span>`;
-
-    // Search with Nominatim (OpenStreetMap) — free, no API key
-    const searchRes = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(parsed.query || parsed.destination)}&format=json&limit=5&addressdetails=1`,
-      { headers: { "Accept-Language": "en", "User-Agent": "Sealion7-Navigator" } }
-    );
-    const places = await searchRes.json();
-
-    if (!places.length) {
-      navStatus.innerHTML = `<span style="color:var(--red);">✗ No results found for "${parsed.destination}".</span>`;
-      return;
-    }
-
-    navStatus.innerHTML = `<span style="color:var(--green);">✓ Found ${places.length} results for "${parsed.destination}"</span>`;
-    navRenderSuggestions(places, parsed.destination);
-
-  } catch(e) {
-    navStatus.innerHTML = `<span style="color:var(--red);">✗ ${e.message}</span>`;
   }
-}
 
-// ── Render location suggestions ──
-function navRenderSuggestions(places, query) {
-  navSuggestions.innerHTML = "";
-
-  const header = document.createElement("div");
-  header.style.cssText = "font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;";
-  header.textContent = `Results for "${query}" — tap to open in ABRP`;
-  navSuggestions.appendChild(header);
-
-  places.forEach(place => {
-    const addr = place.address || {};
-    const line1 = place.display_name.split(",")[0];
-    const line2 = [addr.road, addr.city || addr.town || addr.village, addr.country].filter(Boolean).join(", ");
-
-    const card = document.createElement("div");
-    card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:12px;";
-    card.onmouseenter = () => { card.style.borderColor = "var(--accent)"; card.style.background = "var(--surface2)"; };
-    card.onmouseleave = () => { card.style.borderColor = "var(--border)"; card.style.background = "var(--surface)"; };
-
-    // Category icon
-    const typeIcons = { restaurant:"🍽", hotel:"🏨", hospital:"🏥", fuel:"⛽", parking:"🅿", shop:"🛍", amenity:"📍", tourism:"📸", default:"📍" };
-    const icon = typeIcons[place.type] || typeIcons[place.class] || typeIcons.default;
-
-    card.innerHTML = `
-      <span style="font-size:24px;flex-shrink:0;">${icon}</span>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${line1}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${line2}</div>
-        <div style="font-size:10px;color:var(--muted2);margin-top:2px;font-family:var(--mono);">${parseFloat(place.lat).toFixed(5)}, ${parseFloat(place.lon).toFixed(5)}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
-        <button class="install-btn" style="font-size:11px;padding:6px 12px;" onclick="event.stopPropagation();">🗺 ABRP</button>
-        <button class="hdr-btn" style="font-size:11px;" onclick="event.stopPropagation();">📋 Copy</button>
-      </div>
-    `;
-
-    // ABRP button
-    card.querySelector(".install-btn").addEventListener("click", (e) => {
-      e.stopPropagation();
-      const abrpUrl = `https://abetterrouteplanner.com/?plan_uuid=&dest_lat=${place.lat}&dest_lng=${place.lon}&dest_name=${encodeURIComponent(line1)}`;
-      navStatus.innerHTML = `<span style="color:var(--green);">✓ Opening ABRP for "${line1}"</span>`;
-      // Launch ABRP via ADB intent on the car
-      const intentCmd = `am start -a android.intent.action.VIEW -d "${abrpUrl}"`;
-      fetch(`${SERVER}/shell`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: intentCmd, serial: deviceSel.value || null })
-      }).then(r => r.json()).then(d => {
-        if (!d.success) {
-          // Fallback: open in browser
-          window.open(abrpUrl, "_blank");
-        }
-      }).catch(() => window.open(abrpUrl, "_blank"));
-    });
-
-    // Copy button
-    card.querySelectorAll(".hdr-btn")[0].addEventListener("click", (e) => {
-      e.stopPropagation();
-      navigator.clipboard.writeText(`${line1}\n${line2}\n${place.lat},${place.lon}`);
-      navStatus.innerHTML = `<span style="color:var(--green);">✓ Copied to clipboard</span>`;
-    });
-
-    navSuggestions.appendChild(card);
+  // ── Go button ──
+  goBtn.addEventListener("click", function() {
+    var txt = textInput.value.trim();
+    if (txt) search(extractDest(txt));
   });
-}
+
+  // ── Enter key ──
+  textInput.addEventListener("keydown", function(e) {
+    if (e.key === "Enter") {
+      var txt = textInput.value.trim();
+      if (txt) search(extractDest(txt));
+    }
+  });
+
+  // ── Clear ──
+  clearBtn.addEventListener("click", function() {
+    textInput.value = "";
+    setStatus("");
+    suggestEl.innerHTML = "";
+  });
+
+  // ── Mic button ──
+  micBtn.addEventListener("click", function() {
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setStatus("⚠ Voice not supported — type your destination and press Go", "var(--yellow)");
+      textInput.focus();
+      return;
+    }
+
+    if (listening) {
+      recognition && recognition.stop();
+      return;
+    }
+
+    recognition = new SR();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = function() {
+      listening = true;
+      micBtn.textContent = "⏹";
+      micBtn.style.background  = "var(--red)";
+      micBtn.style.borderColor = "var(--red)";
+      micBtn.style.color       = "#fff";
+      setStatus("🎙 Listening…", "var(--accent)");
+    };
+
+    recognition.onresult = function(e) {
+      var transcript = e.results[0][0].transcript;
+      textInput.value = transcript;
+      search(extractDest(transcript));
+    };
+
+    recognition.onerror = function(e) {
+      var msgs = { "not-allowed": "Mic permission denied — use text box", "no-speech": "No speech detected — try again", "network": "Network error" };
+      setStatus("⚠ " + (msgs[e.error] || e.error), "var(--yellow)");
+    };
+
+    recognition.onend = function() {
+      listening = false;
+      micBtn.textContent = "🎙";
+      micBtn.style.background  = "var(--accent-dim)";
+      micBtn.style.borderColor = "var(--accent)";
+      micBtn.style.color       = "var(--accent)";
+    };
+
+    recognition.start();
+  });
+})();
 
 // ── Init ──
 serverUrlInput.value = SERVER;
