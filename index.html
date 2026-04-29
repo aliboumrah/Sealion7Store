@@ -602,15 +602,16 @@
 
     <!-- Voice + text input bar -->
     <div id="nav-bar" style="display:flex;flex-direction:column;gap:0;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;">
-      <!-- Text input row -->
       <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;">
-        <button id="nav-mic-btn" style="width:44px;height:44px;border-radius:50%;background:var(--accent-dim);border:2px solid var(--accent);color:var(--accent);font-size:20px;cursor:pointer;flex-shrink:0;transition:all .2s;" title="Hold to speak">🎙</button>
-        <input id="nav-text-input" type="text" placeholder='Type or say "I want to go to Paris"…'
+        <button id="nav-mic-btn"
+          onclick="navMicClick()"
+          style="width:44px;height:44px;border-radius:50%;background:var(--accent-dim);border:2px solid var(--accent);color:var(--accent);font-size:20px;cursor:pointer;flex-shrink:0;transition:all .2s;">🎙</button>
+        <input id="nav-text-input" type="text" placeholder='Type destination and press Go…'
+          onkeydown="if(event.key==='Enter') navGo()"
           style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;"/>
-        <button id="nav-go-btn" class="install-btn" style="flex-shrink:0;">Go</button>
-        <button id="nav-clear-btn" class="hdr-btn">✕</button>
+        <button onclick="navGo()" class="install-btn" style="flex-shrink:0;">Go</button>
+        <button onclick="navClear()" class="hdr-btn">✕</button>
       </div>
-      <!-- Status row -->
       <div id="nav-status" style="font-size:11px;color:var(--muted);padding:0 16px 8px;min-height:18px;"></div>
     </div>
 
@@ -2183,161 +2184,122 @@ async function wizardSetupBoot(btn) {
   btn.disabled = false;
 }
 
-// ── Navigate tab — fully self-contained ──
-(function() {
-  const micBtn     = document.getElementById("nav-mic-btn");
-  const textInput  = document.getElementById("nav-text-input");
-  const goBtn      = document.getElementById("nav-go-btn");
-  const clearBtn   = document.getElementById("nav-clear-btn");
-  const statusEl   = document.getElementById("nav-status");
-  const suggestEl  = document.getElementById("nav-suggestions");
+// ── Navigate — global functions with inline onclick ──
+var navRecog = null, navListening = false;
 
-  let recognition  = null;
-  let listening    = false;
+function navStatus(msg, color) {
+  var el = document.getElementById("nav-status");
+  el.textContent = msg;
+  el.style.color = color || "var(--muted)";
+}
 
-  function setStatus(msg, color) {
-    statusEl.textContent  = msg;
-    statusEl.style.color  = color || "var(--muted)";
+function navGo() {
+  var txt = document.getElementById("nav-text-input").value.trim();
+  if (!txt) return;
+  navSearch(navExtract(txt));
+}
+
+function navClear() {
+  document.getElementById("nav-text-input").value = "";
+  document.getElementById("nav-suggestions").innerHTML = "";
+  navStatus("");
+}
+
+function navExtract(text) {
+  var m = text.match(/(?:go to|navigate to|take me to|drive to|route to|i want to go to|head to|find)\s+(.+)/i);
+  return m ? m[1].trim().replace(/[?.!]$/, "") : text.trim().replace(/[?.!]$/, "");
+}
+
+async function navSearch(query) {
+  navStatus("⟳ Searching for " + query + "…");
+  document.getElementById("nav-suggestions").innerHTML = "";
+  try {
+    var url = "https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&q=" + encodeURIComponent(query);
+    var r = await fetch(url, { headers: { "Accept-Language": "en" } });
+    var places = await r.json();
+    if (!places || !places.length) { navStatus("✗ No results for " + query, "var(--red)"); return; }
+    navStatus("✓ " + places.length + " results", "var(--green)");
+    navRender(places, query);
+  } catch(e) {
+    navStatus("✗ " + e.message, "var(--red)");
   }
+}
 
-  // ── Search via Nominatim (direct fetch — no server needed) ──
-  async function search(query) {
-    setStatus(`⟳ Searching for "${query}"…`);
-    suggestEl.innerHTML = "";
-    try {
-      const url = "https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&q=" + encodeURIComponent(query);
-      const r   = await fetch(url, { headers: { "Accept-Language": "en" } });
-      const places = await r.json();
-      if (!places || !places.length) {
-        setStatus(`✗ No results for "${query}"`, "var(--red)");
-        return;
-      }
-      setStatus(`✓ ${places.length} results for "${query}"`, "var(--green)");
-      renderResults(places, query);
-    } catch(e) {
-      setStatus("✗ " + e.message, "var(--red)");
-    }
+function navRender(places, query) {
+  var el = document.getElementById("nav-suggestions");
+  el.innerHTML = "";
+  var icons = { restaurant:"🍽", hotel:"🏨", hospital:"🏥", fuel:"⛽", parking:"🅿", shop:"🛍" };
+  places.forEach(function(p) {
+    var name = p.display_name.split(",")[0];
+    var addr = p.display_name.split(",").slice(1,3).join(",").trim();
+    var icon = icons[p.type] || icons[p.class] || "📍";
+    var card = document.createElement("div");
+    card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;align-items:center;gap:12px;margin-bottom:10px;";
+    var btn = document.createElement("button");
+    btn.className = "install-btn";
+    btn.style.cssText = "font-size:11px;padding:6px 12px;flex-shrink:0;";
+    btn.textContent = "🗺 ABRP";
+    btn.onclick = function() {
+      var dest = "https://abetterrouteplanner.com/?dest_lat=" + p.lat + "&dest_lng=" + p.lon + "&dest_name=" + encodeURIComponent(name);
+      var serial = document.getElementById("device-select").value || null;
+      fetch(SERVER + "/shell", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ command: "am start -a android.intent.action.VIEW -d '" + dest + "'", serial: serial })
+      }).catch(function(){});
+      window.open(dest, "_blank");
+      navStatus("✓ Opening ABRP → " + name, "var(--green)");
+    };
+    var info = document.createElement("div");
+    info.style.cssText = "flex:1;min-width:0;";
+    info.innerHTML = "<div style='font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + name + "</div>" +
+      "<div style='font-size:11px;color:var(--muted);margin-top:2px;'>" + addr + "</div>" +
+      "<div style='font-size:10px;color:var(--muted2);font-family:var(--mono);margin-top:2px;'>" + parseFloat(p.lat).toFixed(4) + ", " + parseFloat(p.lon).toFixed(4) + "</div>";
+    card.appendChild(document.createTextNode(icon + " "));
+    card.appendChild(info);
+    card.appendChild(btn);
+    el.appendChild(card);
+  });
+}
+
+function navMicClick() {
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var btn = document.getElementById("nav-mic-btn");
+  if (!SR) {
+    navStatus("⚠ Voice not supported — type your destination and press Go", "var(--yellow)");
+    document.getElementById("nav-text-input").focus();
+    return;
   }
-
-  // ── Extract destination from natural speech ──
-  function extractDest(text) {
-    const m = text.match(/(?:go to|navigate to|take me to|drive to|directions? to|route to|i want to go to|head to|find|open)\s+(.+)/i);
-    return m ? m[1].trim().replace(/[?.!]$/, "") : text.trim().replace(/[?.!]$/, "");
+  if (navListening) {
+    navRecog && navRecog.stop();
+    return;
   }
-
-  // ── Render result cards ──
-  function renderResults(places, query) {
-    suggestEl.innerHTML = "";
-    const icons = { restaurant:"🍽", hotel:"🏨", hospital:"🏥", fuel:"⛽", parking:"🅿", shop:"🛍", default:"📍" };
-    places.forEach(function(p) {
-      const name  = p.display_name.split(",")[0];
-      const addr  = p.display_name.split(",").slice(1, 3).join(",").trim();
-      const icon  = icons[p.type] || icons[p.class] || icons.default;
-      const card  = document.createElement("div");
-      card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:border-color .15s;";
-      card.onmouseenter = function() { card.style.borderColor = "var(--accent)"; };
-      card.onmouseleave = function() { card.style.borderColor = "var(--border)"; };
-      card.innerHTML = [
-        '<span style="font-size:24px;flex-shrink:0;">' + icon + '</span>',
-        '<div style="flex:1;min-width:0;">',
-          '<div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + name + '</div>',
-          '<div style="font-size:11px;color:var(--muted);margin-top:2px;">' + addr + '</div>',
-          '<div style="font-size:10px;color:var(--muted2);margin-top:2px;font-family:var(--mono);">' + parseFloat(p.lat).toFixed(4) + ', ' + parseFloat(p.lon).toFixed(4) + '</div>',
-        '</div>',
-        '<button class="install-btn" style="font-size:11px;padding:6px 12px;flex-shrink:0;">&#x1F5FA; ABRP</button>'
-      ].join('');
-
-      // Open ABRP on click
-      card.querySelector(".install-btn").addEventListener("click", function(e) {
-        e.stopPropagation();
-        const url = "https://abetterrouteplanner.com/?plan_uuid=&dest_lat=" + p.lat + "&dest_lng=" + p.lon + "&dest_name=" + encodeURIComponent(name);
-        // Try ADB intent to open on car screen
-        var serial = document.getElementById("device-select").value || null;
-        fetch(SERVER + "/shell", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command: 'am start -a android.intent.action.VIEW -d "' + url + '"', serial: serial })
-        }).catch(function() {});
-        // Also open in current browser
-        window.open(url, "_blank");
-        setStatus("✓ Opening ABRP → " + name, "var(--green)");
-      });
-
-      suggestEl.appendChild(card);
-    });
-  }
-
-  // ── Go button ──
-  goBtn.addEventListener("click", function() {
-    var txt = textInput.value.trim();
-    if (txt) search(extractDest(txt));
-  });
-
-  // ── Enter key ──
-  textInput.addEventListener("keydown", function(e) {
-    if (e.key === "Enter") {
-      var txt = textInput.value.trim();
-      if (txt) search(extractDest(txt));
-    }
-  });
-
-  // ── Clear ──
-  clearBtn.addEventListener("click", function() {
-    textInput.value = "";
-    setStatus("");
-    suggestEl.innerHTML = "";
-  });
-
-  // ── Mic button ──
-  micBtn.addEventListener("click", function() {
-    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      setStatus("⚠ Voice not supported — type your destination and press Go", "var(--yellow)");
-      textInput.focus();
-      return;
-    }
-
-    if (listening) {
-      recognition && recognition.stop();
-      return;
-    }
-
-    recognition = new SR();
-    recognition.lang = "en-US";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    recognition.onstart = function() {
-      listening = true;
-      micBtn.textContent = "⏹";
-      micBtn.style.background  = "var(--red)";
-      micBtn.style.borderColor = "var(--red)";
-      micBtn.style.color       = "#fff";
-      setStatus("🎙 Listening…", "var(--accent)");
-    };
-
-    recognition.onresult = function(e) {
-      var transcript = e.results[0][0].transcript;
-      textInput.value = transcript;
-      search(extractDest(transcript));
-    };
-
-    recognition.onerror = function(e) {
-      var msgs = { "not-allowed": "Mic permission denied — use text box", "no-speech": "No speech detected — try again", "network": "Network error" };
-      setStatus("⚠ " + (msgs[e.error] || e.error), "var(--yellow)");
-    };
-
-    recognition.onend = function() {
-      listening = false;
-      micBtn.textContent = "🎙";
-      micBtn.style.background  = "var(--accent-dim)";
-      micBtn.style.borderColor = "var(--accent)";
-      micBtn.style.color       = "var(--accent)";
-    };
-
-    recognition.start();
-  });
-})();
+  navRecog = new SR();
+  navRecog.lang = "en-US";
+  navRecog.interimResults = false;
+  navRecog.onstart = function() {
+    navListening = true;
+    btn.textContent = "⏹";
+    btn.style.background = "var(--red)";
+    btn.style.borderColor = "var(--red)";
+    btn.style.color = "#fff";
+    navStatus("🎙 Listening…", "var(--accent)");
+  };
+  navRecog.onresult = function(e) {
+    var t = e.results[0][0].transcript;
+    document.getElementById("nav-text-input").value = t;
+    navSearch(navExtract(t));
+  };
+  navRecog.onerror = function(e) {
+    navStatus("⚠ " + (e.error === "not-allowed" ? "Mic denied — use text box" : e.error), "var(--yellow)");
+  };
+  navRecog.onend = function() {
+    navListening = false;
+    btn.textContent = "🎙";
+    btn.style.background = "var(--accent-dim)";
+    btn.style.borderColor = "var(--accent)";
+    btn.style.color = "var(--accent)";
+  };
+  navRecog.start();
+}
 
 // ── Init ──
 serverUrlInput.value = SERVER;
