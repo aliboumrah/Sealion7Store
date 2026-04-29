@@ -2271,14 +2271,12 @@ function navRender(places, query) {
     btn.textContent = "🗺 ABRP";
     btn.onclick = function() {
       // ABRP deep link format: destinations JSON array with lat/lng/name
-      var destinations = JSON.stringify([{lat: parseFloat(p.lat), lng: parseFloat(p.lon), name: name}]);
-      var dest = "https://abetterrouteplanner.com/?plan=" + encodeURIComponent(destinations);
+      var plan = JSON.stringify([{lat: parseFloat(p.lat), lng: parseFloat(p.lon), name: name}]);
+      var dest = "https://abetterrouteplanner.com/?plan=" + encodeURIComponent(plan);
       var serial = document.getElementById("device-select").value || null;
-      fetch(SERVER + "/shell", { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ command: "am start -a android.intent.action.VIEW -d '" + dest + "'", serial: serial })
-      }).catch(function(){});
-      window.open(dest, "_blank");
+      // Navigate current tab to ABRP (avoids popup blocker)
       navStatus("✓ Opening ABRP → " + name, "var(--green)");
+      setTimeout(function() { window.location.href = dest; }, 500);
     };
     var info = document.createElement("div");
     info.style.cssText = "flex:1;min-width:0;";
