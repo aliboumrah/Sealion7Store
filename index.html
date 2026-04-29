@@ -2270,7 +2270,9 @@ function navRender(places, query) {
     btn.style.cssText = "font-size:11px;padding:6px 12px;flex-shrink:0;";
     btn.textContent = "🗺 ABRP";
     btn.onclick = function() {
-      var dest = "https://abetterrouteplanner.com/?dest_lat=" + p.lat + "&dest_lng=" + p.lon + "&dest_name=" + encodeURIComponent(name);
+      // ABRP deep link format: destinations JSON array with lat/lng/name
+      var destinations = JSON.stringify([{lat: parseFloat(p.lat), lng: parseFloat(p.lon), name: name}]);
+      var dest = "https://abetterrouteplanner.com/?plan=" + encodeURIComponent(destinations);
       var serial = document.getElementById("device-select").value || null;
       fetch(SERVER + "/shell", { method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ command: "am start -a android.intent.action.VIEW -d '" + dest + "'", serial: serial })
