@@ -778,29 +778,80 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && pathname === "/abrp-oauth-token") {
     const code = parsed.query.code || parsed.query.auth_code;
     const clientId = parsed.query.client_id || ABRP_CLIENT_ID;
+    
+    console.log("📍 ABRP OAuth Token Exchange:");
+    console.log("   Code:", code ? code.substring(0, 10) + "..." : "MISSING");
+    console.log("   Client ID:", clientId);
+    
     if (!code) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: "Missing code" }));
       return;
     }
+    
     try {
-      const tokenUrl = "https://api.iternio.com/1/oauth/token" +
-        "?client_id=" + encodeURIComponent(clientId) +
-        "&code=" + encodeURIComponent(code) +
-        "&redirect_uri=" + encodeURIComponent(ABRP_REDIRECT_URI);
-      console.log("ABRP OAuth exchange via GitHub callback", { client_id: clientId, redirect_uri: ABRP_REDIRECT_URI, has_code: !!code });
-      const data = await httpsJsonGet(tokenUrl);
+      console.log("🔄 Exchanging code with ABRP servers...");
+      
+      // ✅ FIXED: Use POST with form data instead of GET query string
+      const https = require("https");
+      const postData = new URLSearchParams({
+        grant_type: "authorization_code",
+        code: code,
+        client_id: clientId,
+        redirect_uri: ABRP_REDIRECT_URI
+      }).toString();
+      
+      const options = {
+        hostname: "api.iternio.com",
+        path: "/1/oauth/token",
+        method: "POST",  // ✅ POST, not GET!
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Length": Buffer.byteLength(postData),
+          "User-Agent": "SEALION 7 PILOT"
+        }
+      };
+      
+      const data = await new Promise((resolve, reject) => {
+        const req2 = https.request(options, (r) => {
+          let body = "";
+          console.log("   ABRP response status:", r.statusCode);
+          r.on("data", chunk => body += chunk);
+          r.on("end", () => {
+            try {
+              resolve(JSON.parse(body));
+            } catch(e) {
+              reject(new Error("Invalid ABRP response: " + body.substring(0, 100)));
+            }
+          });
+        });
+        req2.on("error", reject);
+        req2.write(postData);
+        req2.end();
+      });
+      
+      if (data.error) {
+        console.error("❌ ABRP OAuth error:", data.error, data.error_description);
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: data.error, message: data.error_description || "OAuth exchange failed" }));
+        return;
+      }
+      
       if (data.access_token) {
+        console.log("✅ Successfully got access token from ABRP");
         saveAbrpToken(data.access_token);
         await fetchAbrpUserInfo(data.access_token);
         data.connected = true;
         data.user = ABRP_USER;
       }
+      
       res.writeHead(200);
       res.end(JSON.stringify(data));
+      
     } catch(e) {
-      res.writeHead(200);
-      res.end(JSON.stringify({ error: e.message }));
+      console.error("❌ OAuth token exchange failed:", e.message);
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: e.message, connected: false }));
     }
     return;
   }
