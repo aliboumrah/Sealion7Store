@@ -928,9 +928,28 @@ body.history-active #metrics-panel { display:flex; }
 // the ABRP ?code=... returned by GitHub Pages is still exchanged with the car server.
 (function sealion7PilotEarlyAbrpOAuthExchange() {
   try {
+    // Extract code from URL (handle both ?code=... and #code=...)
+    let code = null;
     const params = new URLSearchParams(window.location.search || '');
-    const code = params.get('code');
-    if (!code) return;
+    code = params.get('code');
+    
+    if (!code && window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      code = hashParams.get('code');
+    }
+    
+    // Fallback: regex extraction in case of unusual URL encoding
+    if (!code) {
+      const match = window.location.href.match(/[?&#]code=([^&#]+)/);
+      code = match ? decodeURIComponent(match[1]) : null;
+    }
+    
+    if (!code) {
+      console.log('No ABRP OAuth code in URL');
+      return;
+    }
+
+    console.log('Found ABRP OAuth code, preparing exchange...', code.substring(0, 10) + '...');
 
     const getServer = () => {
       const saved = (localStorage.getItem('serverUrl') || '').replace(/\/$/, '');
@@ -942,6 +961,7 @@ body.history-active #metrics-panel { display:flex; }
     const server = getServer();
     localStorage.setItem('abrpOAuthLastCodeSeen', '1');
     localStorage.setItem('abrpOAuthStatus', 'Exchanging code with car server...');
+    localStorage.setItem('abrpOAuthCode', code); // Store temporarily for debugging
 
     fetch(server + '/abrp-oauth-token?code=' + encodeURIComponent(code), { cache: 'no-store' })
       .then(r => r.json())
@@ -949,9 +969,12 @@ body.history-active #metrics-panel { display:flex; }
         if (!data || !data.access_token) {
           throw new Error((data && (data.error || data.message)) || JSON.stringify(data));
         }
+        console.log('ABRP OAuth exchange successful');
         localStorage.setItem('abrpToken', data.access_token);
         localStorage.setItem('abrpOAuthStatus', 'connected');
         localStorage.removeItem('abrpOAuthError');
+        localStorage.removeItem('abrpOAuthCode');
+        // Remove the code from URL
         window.history.replaceState({}, document.title, window.location.pathname);
         window.location.reload();
       })
@@ -959,6 +982,7 @@ body.history-active #metrics-panel { display:flex; }
         console.error('ABRP OAuth exchange failed:', err);
         localStorage.setItem('abrpOAuthStatus', 'failed');
         localStorage.setItem('abrpOAuthError', String(err && err.message ? err.message : err));
+        // Keep code in URL so user can see the redirect happened; let secondary handler retry
       });
   } catch (e) {
     console.error('Early ABRP OAuth handler error:', e);
@@ -2069,23 +2093,35 @@ function abrpGetReturnedAuthCodeFromUrl() {
     if (!src) continue;
     const params = new URLSearchParams(src.startsWith("?") ? src.slice(1) : src);
     const value = params.get("code");
-    if (value) return value;
+    if (value) {
+      console.log('Found ABRP code from URL source');
+      return value;
+    }
   }
 
   const raw = window.location.href.match(/[?&#]code=([^&#]+)/);
-  return raw ? decodeURIComponent(raw[1]) : "";
+  const code = raw ? decodeURIComponent(raw[1]) : "";
+  if (code) {
+    console.log('Found ABRP code via regex fallback');
+  }
+  return code;
 }
 
 async function abrpHandleReturnedAuthCode() {
   const authCode = abrpGetReturnedAuthCodeFromUrl();
-  if (!authCode) return false;
+  if (!authCode) {
+    console.log('No auth code to handle');
+    return false;
+  }
 
+  console.log('Handling returned auth code, exchanging with server...');
   abrpSetStatus("⟳ Exchanging ABRP auth code…", "var(--accent)");
   try {
-    const res = await fetch(SERVER + "/abrp-oauth-token?code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(ABRP_CLIENT_ID));
+    const res = await fetch(SERVER + "/abrp-oauth-token?code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(ABRP_CLIENT_ID), { cache: 'no-store' });
     const data = await res.json();
     if (!data.access_token) throw new Error(data.error || JSON.stringify(data));
 
+    console.log('ABRP token received, storing...');
     abrpToken = data.access_token;
     localStorage.setItem("abrpToken", abrpToken);
     const tokenInput = document.getElementById("abrp-token");
@@ -2096,6 +2132,7 @@ async function abrpHandleReturnedAuthCode() {
     await abrpRefreshStatus();
     return true;
   } catch(e) {
+    console.error('ABRP auth code handling error:', e);
     localStorage.setItem("abrpOAuthError", String(e.message || e));
     abrpSetStatus("✗ OAuth failed: " + e.message, "var(--red)");
     return false;
