@@ -924,7 +924,13 @@ body.history-active #metrics-panel { display:flex; }
 
 <script>
 // ── Server URL — persisted in localStorage ──
-let SERVER = localStorage.getItem("serverUrl") || "http://localhost:3000";
+function getDefaultServerUrl() {
+  // GitHub Pages UI talks to the local car server. User can override this in Settings.
+  if (location.hostname === "aliboumrah.github.io") return "http://192.168.1.20:3000";
+  if (location.protocol === "file:") return "http://192.168.1.20:3000";
+  return location.origin || "http://localhost:3000";
+}
+let SERVER = localStorage.getItem("serverUrl") || getDefaultServerUrl();
 
 const terminal  = document.getElementById("terminal");
 const input     = document.getElementById("cmd-input");
@@ -1975,8 +1981,22 @@ async function abrpRefreshStatus() {
   const red = document.getElementById("abrp-redirect-preview");
   if (red) red.textContent = abrpGetRedirectUri();
   try {
-    const res = await fetch(SERVER + "/abrp/status", { cache: "no-store" });
-    const data = await res.json();
+    let res = await fetch(SERVER + "/abrp/status", { cache: "no-store" });
+    let data = await res.json();
+
+    // If the browser still has a token but the car server lost it, sync it back automatically.
+    if (!data.connected && abrpToken) {
+      try {
+        await fetch(SERVER + "/abrp-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: abrpToken })
+        });
+        res = await fetch(SERVER + "/abrp/status", { cache: "no-store" });
+        data = await res.json();
+      } catch(e) {}
+    }
+
     if (red) red.textContent = abrpGetRedirectUri();
     if (data.connected) {
       abrpRenderConnected(data);
@@ -2000,7 +2020,7 @@ async function abrpHandleReturnedAuthCode() {
 
   abrpSetStatus("⟳ Exchanging ABRP auth code…", "var(--accent)");
   try {
-    const res = await fetch(SERVER + "/abrp-oauth-token?auth_code=" + encodeURIComponent(authCode));
+    const res = await fetch(SERVER + "/abrp-oauth-token?auth_code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(ABRP_CLIENT_ID));
     const data = await res.json();
     if (!data.access_token) throw new Error(data.error || JSON.stringify(data));
 

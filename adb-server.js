@@ -715,6 +715,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── ABRP status / OAuth callback ──
   if (req.method === "GET" && pathname === "/abrp/status") {
+    if (!ABRP_TOKEN) loadAbrpToken();
     if (ABRP_TOKEN && !ABRP_USER) await fetchAbrpUserInfo(ABRP_TOKEN);
     const redirectUri = ABRP_REDIRECT_URI;
     res.writeHead(200);
@@ -791,6 +792,8 @@ const server = http.createServer(async (req, res) => {
       if (data.access_token) {
         saveAbrpToken(data.access_token);
         await fetchAbrpUserInfo(data.access_token);
+        data.connected = true;
+        data.user = ABRP_USER;
       }
       res.writeHead(200);
       res.end(JSON.stringify(data));
@@ -840,10 +843,17 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && pathname === "/abrp") {
     const body = await parseBody(req);
     const { serial } = body;
+    // Use token sent by UI when available, otherwise use the token persisted on the car server.
+    // Reload from disk as a fallback in case the variable was not initialized after restart.
+    if (!ABRP_TOKEN) loadAbrpToken();
     const token = body.token || ABRP_TOKEN;
     if (!token) {
       res.writeHead(400);
-      res.end(JSON.stringify({ success: false, output: "Missing ABRP token" }));
+      res.end(JSON.stringify({
+        success: false,
+        output: "Missing ABRP token. Open Settings → Login with ABRP Account first.",
+        connected: false
+      }));
       return;
     }
 
