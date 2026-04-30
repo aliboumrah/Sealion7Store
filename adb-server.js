@@ -91,7 +91,7 @@ function getPublicBaseUrl(req) {
 function buildAbrpAuthUrl(req) {
   const redirectUri = ABRP_REDIRECT_URI;
   const state = Date.now().toString(36) + Math.random().toString(36).slice(2);
-  const scope = "get_plan set_telemetry";
+  const scope = "set_telemetry";
   ABRP_OAUTH_STATE = state;
   ABRP_OAUTH_REDIRECT_URI = redirectUri;
   console.log("ABRP OAuth start", { client_id: ABRP_CLIENT_ID, redirect_uri: redirectUri, state });
@@ -738,14 +738,14 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && pathname === "/oauth/callback") {
-    const code = parsed.query.auth_code || parsed.query.code;
+    const code = parsed.query.code;
     const oauthError = parsed.query.error || parsed.query.error_description;
     if (!code) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       const configured = ABRP_REDIRECT_URI;
       const msg = oauthError
         ? "ABRP returned an OAuth error: " + String(oauthError)
-        : "No auth_code/code was present in the callback URL. Start login from Settings or use the button below.";
+        : "No code was present in the callback URL. Start login from Settings or use the button below.";
       const esc = (x) => String(x).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
       res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>SEALION 7 PILOT</title><style>body{background:#080c10;color:#e8f0f8;font-family:system-ui;padding:32px;line-height:1.5}a,.btn{color:#001;background:#00e5ff;padding:12px 18px;border-radius:12px;text-decoration:none;display:inline-block;margin-top:12px}code{color:#00e5ff}</style></head><body><h2>SEALION 7 PILOT</h2><p>${esc(msg)}</p><p>Configured redirect URI:</p><code>${esc(configured)}</code><br><a class="btn" href="/oauth/start">Login with ABRP again</a></body></html>`);
       return;
@@ -775,11 +775,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && pathname === "/abrp-oauth-token") {
-    const code = parsed.query.auth_code || parsed.query.code;
+    const code = parsed.query.code;
     const clientId = parsed.query.client_id || ABRP_CLIENT_ID;
     if (!code) {
       res.writeHead(400);
-      res.end(JSON.stringify({ error: "Missing auth_code" }));
+      res.end(JSON.stringify({ error: "Missing code" }));
       return;
     }
     try {

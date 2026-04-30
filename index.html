@@ -1944,7 +1944,7 @@ function abrpSetStatus(message, color = "var(--muted)") {
 }
 
 function abrpGetRedirectUri() {
-  // GitHub Pages is the OAuth callback. It receives auth_code, then forwards it to the car server.
+  // GitHub Pages is the OAuth callback. It receives code, then forwards it to the car server.
   return "https://aliboumrah.github.io/Sealion7Store/";
 }
 
@@ -2013,14 +2013,32 @@ async function abrpRefreshStatus() {
 window.abrpRefreshStatus = abrpRefreshStatus;
 window.refreshAbrpStatus = abrpRefreshStatus;
 
+function abrpGetReturnedAuthCodeFromUrl() {
+  // ABRP redirects back to GitHub Pages with ?code=...
+  // Read the OAuth code from the redirect URL. ABRP returns ?code=...
+  const sources = [
+    window.location.search || "",
+    window.location.hash ? window.location.hash.replace(/^#/, "?") : "",
+  ];
+
+  for (const src of sources) {
+    if (!src) continue;
+    const params = new URLSearchParams(src.startsWith("?") ? src.slice(1) : src);
+    const value = params.get("code");
+    if (value) return value;
+  }
+
+  const raw = window.location.href.match(/[?&#]code=([^&#]+)/);
+  return raw ? decodeURIComponent(raw[2]) : "";
+}
+
 async function abrpHandleReturnedAuthCode() {
-  const params = new URLSearchParams(window.location.search);
-  const authCode = params.get("auth_code") || params.get("code");
+  const authCode = abrpGetReturnedAuthCodeFromUrl();
   if (!authCode) return false;
 
   abrpSetStatus("⟳ Exchanging ABRP auth code…", "var(--accent)");
   try {
-    const res = await fetch(SERVER + "/abrp-oauth-token?auth_code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(ABRP_CLIENT_ID));
+    const res = await fetch(SERVER + "/abrp-oauth-token?code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(ABRP_CLIENT_ID));
     const data = await res.json();
     if (!data.access_token) throw new Error(data.error || JSON.stringify(data));
 
@@ -2029,6 +2047,7 @@ async function abrpHandleReturnedAuthCode() {
     const tokenInput = document.getElementById("abrp-token");
     if (tokenInput) tokenInput.value = abrpToken;
 
+    // Remove the one-time OAuth code from the browser URL after successful exchange.
     window.history.replaceState({}, "", window.location.pathname);
     await abrpRefreshStatus();
     return true;
@@ -2040,11 +2059,18 @@ async function abrpHandleReturnedAuthCode() {
 
 function abrpStartOAuthLogin() {
   const redirect = abrpGetRedirectUri();
+
+  // IMPORTANT: ABRP currently accepts the telemetry scope only for this app.
+  // Do not add get_plan here unless ABRP explicitly enables it for your client.
+  const scope = "set_telemetry";
+
   const url = "https://abetterrouteplanner.com/oauth/auth" +
     "?client_id=" + encodeURIComponent(ABRP_CLIENT_ID) +
-    "&scope=" + encodeURIComponent("get_plan set_telemetry") +
+    "&scope=" + encodeURIComponent(scope) +
     "&response_type=code" +
     "&redirect_uri=" + encodeURIComponent(redirect);
+
+  console.log("ABRP OAuth URL:", url);
   window.location.href = url;
 }
 
