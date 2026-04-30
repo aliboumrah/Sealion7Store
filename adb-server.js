@@ -30,7 +30,7 @@ const HISTORY_FILE     = path.join(__dirname, "car_props_history.json");
 const HISTORY_MAX_ROWS = 20_000;
 
 let carPropsCache     = readJsonFile(CACHE_FILE, {});
-let carPropsHistory   = readJsonFile(HISTORY_FILE, []);
+let carPropsHistory   = normalizeHistory(readJsonFile(HISTORY_FILE, []));
 let carPollRunning    = false;
 let carLastPollTs     = 0;
 let carLastPollError  = null;
@@ -126,18 +126,57 @@ function parseCarServiceProperties(text) {
   return properties;
 }
 
-function buildHistorySnapshot(properties, ts) {
-  const snapshot = { ts };
-  for (const [id, prop] of Object.entries(properties)) snapshot[id] = prop.value;
-  return snapshot;
+function propValueOnly(prop) {
+  if (!prop || typeof prop !== "object") return prop;
+  return prop.value;
 }
-
+function propsToValueMap(properties) {
+  const out = {};
+  for (const [id, prop] of Object.entries(properties || {})) out[id.toLowerCase()] = propValueOnly(prop);
+  return out;
+}
+function makeFullHistoryEntry(properties, ts) {
+  return { ts, type: "full", values: propsToValueMap(properties) };
+}
+function makeDeltaHistoryEntry(properties, changedIds, ts) {
+  const changes = {};
+  for (const id of changedIds) changes[id.toLowerCase()] = propValueOnly(properties[id]);
+  return { ts, type: "delta", changes };
+}
+function normalizeHistoryEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  if (entry.type === "full" && entry.values) return entry;
+  if (entry.type === "delta" && entry.changes) return entry;
+  const ts = Number(entry.ts || entry.timestamp || entry.time || Date.now());
+  const values = {};
+  if (entry.properties && typeof entry.properties === "object") {
+    for (const [id, prop] of Object.entries(entry.properties)) values[id.toLowerCase()] = propValueOnly(prop);
+  }
+  for (const [key, value] of Object.entries(entry)) {
+    if (key === "ts" || key === "timestamp" || key === "time" || key === "properties") continue;
+    if (key.startsWith("0x")) values[key.toLowerCase()] = value;
+  }
+  return { ts, type: "full", values };
+}
+function normalizeHistory(history) {
+  return (Array.isArray(history) ? history : []).map(normalizeHistoryEntry).filter(Boolean);
+}
+function reconstructHistorySnapshots(history) {
+  const state = {};
+  const snapshots = [];
+  for (const raw of normalizeHistory(history)) {
+    const entry = normalizeHistoryEntry(raw);
+    if (!entry) continue;
+    if (entry.type === "full") Object.assign(state, entry.values || {});
+    else if (entry.type === "delta") Object.assign(state, entry.changes || {});
+    snapshots.push({ ts: entry.ts, ...state });
+  }
+  return snapshots;
+}
 function diffChangedIds(oldProps, newProps) {
   const changed = [];
   for (const [id, prop] of Object.entries(newProps)) {
-    if (!oldProps[id] || !sameValue(oldProps[id].value, prop.value) || oldProps[id].status !== prop.status) {
-      changed.push(id);
-    }
+    if (!oldProps[id] || !sameValue(oldProps[id].value, prop.value)) changed.push(id);
   }
   return changed;
 }
@@ -165,9 +204,22 @@ async function pollCarProperties(serial = null, reason = "timer") {
       carPropsCache = newProps;
       writeJsonFile(CACHE_FILE, carPropsCache);
 
-      if (changedIds.length > 0 || carPropsHistory.length === 0) {
-        carPropsHistory.push(buildHistorySnapshot(newProps, carLastPollTs));
-        if (carPropsHistory.length > HISTORY_MAX_ROWS) carPropsHistory = carPropsHistory.slice(-HISTORY_MAX_ROWS);
+      if (carPropsHistory.length === 0) {
+        carPropsHistory.push(makeFullHistoryEntry(newProps, carLastPollTs));
+        writeJsonFile(HISTORY_FILE, carPropsHistory);
+      } else if (changedIds.length > 0) {
+        carPropsHistory.push(makeDeltaHistoryEntry(newProps, changedIds, carLastPollTs));
+        if (carPropsHistory.length > HISTORY_MAX_ROWS) {
+          const reconstructed = reconstructHistorySnapshots(carPropsHistory);
+          const trimmed = carPropsHistory.slice(-HISTORY_MAX_ROWS);
+          const firstTs = trimmed[0] && trimmed[0].ts;
+          const firstFull = reconstructed.find(row => row.ts === firstTs);
+          carPropsHistory = trimmed;
+          if (firstFull) {
+            const { ts, ...values } = firstFull;
+            carPropsHistory[0] = { ts, type: "full", values };
+          }
+        }
         writeJsonFile(HISTORY_FILE, carPropsHistory);
       }
     }
@@ -837,17 +889,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── GET /history — return car property history ──
+  // ── GET /history — return reconstructed full snapshots for the UI chart ──
   if (req.method === "GET" && pathname === "/history") {
     try {
-      const fs = require("fs");
-      const path = require("path");
-      const histFile = path.join(__dirname, "car_props_history.json");
-      const history = fs.existsSync(histFile)
-        ? JSON.parse(fs.readFileSync(histFile, "utf8"))
-        : [];
+      const rawHistory = fs.existsSync(HISTORY_FILE)
+        ? normalizeHistory(JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")))
+        : carPropsHistory;
+      const history = reconstructHistorySnapshots(rawHistory);
       res.writeHead(200);
-      res.end(JSON.stringify({ success: true, history, count: history.length }));
+      res.end(JSON.stringify({ success: true, history, count: history.length, rawCount: rawHistory.length, storage: "delta" }));
+    } catch(e) {
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: false, history: [], error: e.message }));
+    }
+    return;
+  }
+
+  // ── GET /history/raw — return compact delta/full records exactly as stored ──
+  if (req.method === "GET" && pathname === "/history/raw") {
+    try {
+      const rawHistory = fs.existsSync(HISTORY_FILE)
+        ? normalizeHistory(JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")))
+        : carPropsHistory;
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, history: rawHistory, count: rawHistory.length, storage: "delta" }));
     } catch(e) {
       res.writeHead(200);
       res.end(JSON.stringify({ success: false, history: [], error: e.message }));
