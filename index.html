@@ -923,6 +923,48 @@ body.history-active #metrics-panel { display:flex; }
 </div>
 
 <script>
+// ── Early ABRP OAuth redirect handler ──
+// This runs before the rest of the UI logic, so even if another module has an error,
+// the ABRP ?code=... returned by GitHub Pages is still exchanged with the car server.
+(function sealion7PilotEarlyAbrpOAuthExchange() {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const code = params.get('code');
+    if (!code) return;
+
+    const getServer = () => {
+      const saved = (localStorage.getItem('serverUrl') || '').replace(//$/, '');
+      if (saved) return saved;
+      if (location.hostname === 'aliboumrah.github.io' || location.protocol === 'file:') return 'http://192.168.1.20:3000';
+      return (location.origin || 'http://localhost:3000').replace(//$/, '');
+    };
+
+    const server = getServer();
+    localStorage.setItem('abrpOAuthLastCodeSeen', '1');
+    localStorage.setItem('abrpOAuthStatus', 'Exchanging code with car server...');
+
+    fetch(server + '/abrp-oauth-token?code=' + encodeURIComponent(code), { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => {
+        if (!data || !data.access_token) {
+          throw new Error((data && (data.error || data.message)) || JSON.stringify(data));
+        }
+        localStorage.setItem('abrpToken', data.access_token);
+        localStorage.setItem('abrpOAuthStatus', 'connected');
+        localStorage.removeItem('abrpOAuthError');
+        window.history.replaceState({}, document.title, window.location.pathname);
+        window.location.reload();
+      })
+      .catch(err => {
+        console.error('ABRP OAuth exchange failed:', err);
+        localStorage.setItem('abrpOAuthStatus', 'failed');
+        localStorage.setItem('abrpOAuthError', String(err && err.message ? err.message : err));
+      });
+  } catch (e) {
+    console.error('Early ABRP OAuth handler error:', e);
+  }
+})();
+
 // ── Server URL — persisted in localStorage ──
 function getDefaultServerUrl() {
   // GitHub Pages UI talks to the local car server. User can override this in Settings.
@@ -2003,6 +2045,8 @@ async function abrpRefreshStatus() {
       return data;
     }
     abrpRenderDisconnected(data.redirect_uri);
+    const lastOAuthError = localStorage.getItem("abrpOAuthError");
+    if (lastOAuthError) abrpSetStatus("✗ OAuth exchange failed: " + lastOAuthError, "var(--red)");
     return data;
   } catch(e) {
     abrpRenderDisconnected(abrpGetRedirectUri());
@@ -2029,7 +2073,7 @@ function abrpGetReturnedAuthCodeFromUrl() {
   }
 
   const raw = window.location.href.match(/[?&#]code=([^&#]+)/);
-  return raw ? decodeURIComponent(raw[2]) : "";
+  return raw ? decodeURIComponent(raw[1]) : "";
 }
 
 async function abrpHandleReturnedAuthCode() {
@@ -2052,6 +2096,7 @@ async function abrpHandleReturnedAuthCode() {
     await abrpRefreshStatus();
     return true;
   } catch(e) {
+    localStorage.setItem("abrpOAuthError", String(e.message || e));
     abrpSetStatus("✗ OAuth failed: " + e.message, "var(--red)");
     return false;
   }

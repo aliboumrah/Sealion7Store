@@ -315,8 +315,9 @@ async function pollCarProperties(serial = null, reason = "timer") {
 const corsHeaders = {
   "Access-Control-Allow-Origin":  "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Device-Serial, X-Filename",
+  "Access-Control-Allow-Headers": "Content-Type, X-Device-Serial, X-Filename, X-Requested-With",
   "Access-Control-Expose-Headers": "Content-Disposition, Content-Length",
+  "Access-Control-Allow-Private-Network": "true",
 };
 
 // ── Connect ADB to localhost:5555 (Termux mode only) ──
@@ -775,7 +776,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && pathname === "/abrp-oauth-token") {
-    const code = parsed.query.code;
+    const code = parsed.query.code || parsed.query.auth_code;
     const clientId = parsed.query.client_id || ABRP_CLIENT_ID;
     if (!code) {
       res.writeHead(400);
