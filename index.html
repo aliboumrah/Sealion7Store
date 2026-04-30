@@ -917,6 +917,7 @@ let cmdHistory = [], histIdx = -1;
 // ── Tabs ──
 const panes = { linux: document.getElementById("linux-pane"), termux: document.getElementById("termux-pane"), apk: document.getElementById("apk-pane"), packages: document.getElementById("packages-pane"), carservice: document.getElementById("carservice-pane"), abrp: document.getElementById("abrp-pane"), navigate: document.getElementById("navigate-pane"), history: document.getElementById("history-pane"), shell: document.getElementById("terminal-pane") };
 let allPackages = [];
+let histData    = [];
 const quickBar = document.getElementById("quick-bar");
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => {
@@ -2417,7 +2418,6 @@ function navMicClick() {
 }
 
 // ── History tab ──
-let histData = [];
 
 async function loadHistory() {
   const status = document.getElementById("hist-status");
