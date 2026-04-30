@@ -415,7 +415,9 @@
   .hist-metric-item { display:flex; align-items:center; gap:7px; font-family:var(--mono); cursor:pointer; padding:6px 7px; border:1px solid var(--border2); border-radius:8px; background:var(--bg); line-height:1.35; }
   .hist-metric-item:hover { border-color:var(--accent); background:var(--accent-dim); color:var(--accent); }
   .hist-metric-item input { accent-color:var(--accent); }
-  @media(max-width:640px){ .history-panel{display:none;} }
+  #metrics-panel { display:none; }
+body.history-active #metrics-panel { display:flex; }
+@media(max-width:640px){ .history-panel{display:none!important;} }
 </style>
 </head>
 <body>
@@ -658,7 +660,7 @@
       <span id="hist-status" style="font-size:11px;color:var(--muted);font-family:var(--mono);"></span>
     </div>
     <div id="hist-chart-wrap" style="flex:1;overflow:hidden;padding:16px;display:flex;flex-direction:column;">
-      <canvas id="hist-canvas" style="flex:1;width:100%;"></canvas>
+      <canvas id="hist-canvas" style="flex:1;width:100%;height:100%;min-height:280px;"></canvas>
       <div id="hist-empty" style="color:var(--muted);font-size:12px;text-align:center;padding:40px;">No history yet — server polls every 10s</div>
     </div>
   </div>
@@ -943,6 +945,7 @@ document.querySelectorAll(".tab").forEach(tab => {
     tab.classList.add("active");
     const t = tab.dataset.tab;
     switchTab(t);
+    document.body.classList.toggle("history-active", t === "history");
     if (t === "packages" && allPackages.length === 0) loadPackages();
     if (t === "carservice" && !csData) loadCarService();
     if (t === "history") loadHistory();
@@ -2664,19 +2667,35 @@ function renderHistChart() {
 }
 
 document.getElementById("hist-refresh-btn").addEventListener("click", loadHistory);
-document.querySelectorAll('#hist-metric-list input[type="checkbox"]').forEach(box => {
-  box.addEventListener("change", () => {
-    requestAnimationFrame(renderHistChart);
+
+function updateHistoryAfterMetricChange() {
+  if (!histData || histData.length === 0) {
+    loadHistory();
+    return;
+  }
+  renderHistChart();
+}
+
+const histMetricList = document.getElementById("hist-metric-list");
+if (histMetricList) {
+  histMetricList.addEventListener("change", updateHistoryAfterMetricChange);
+  histMetricList.addEventListener("click", (e) => {
+    if (e.target && e.target.matches('input[type="checkbox"]')) {
+      setTimeout(updateHistoryAfterMetricChange, 0);
+    }
   });
-});
+}
+
 document.getElementById("hist-select-all-btn").addEventListener("click", () => {
   document.querySelectorAll('#hist-metric-list input[type="checkbox"]').forEach(b => b.checked = true);
-  renderHistChart();
+  updateHistoryAfterMetricChange();
 });
+
 document.getElementById("hist-clear-metrics-btn").addEventListener("click", () => {
   document.querySelectorAll('#hist-metric-list input[type="checkbox"]').forEach(b => b.checked = false);
-  renderHistChart();
+  updateHistoryAfterMetricChange();
 });
+
 document.getElementById("hist-time-filter").addEventListener("change", () => { updateHistoryCustomInputs(); renderHistChart(); });
 document.getElementById("hist-from").addEventListener("change", renderHistChart);
 document.getElementById("hist-to").addEventListener("change", renderHistChart);
@@ -2686,25 +2705,52 @@ function downloadJson(data, filename) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-}
-
-function downloadFromServer(endpoint, fallbackData, filename) {
-  const a = document.createElement("a");
-  a.href = `${SERVER}${endpoint}`;
+  a.href = url;
   a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadFromServer(endpoint, fallbackData, filename) {
+  const status = document.getElementById("hist-status");
+  try {
+    const res = await fetch(`${SERVER}${endpoint}?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (status) status.textContent = `✓ Downloaded ${filename}`;
+  } catch (e) {
+    if (fallbackData !== null && fallbackData !== undefined) {
+      downloadJson(fallbackData, filename);
+      if (status) status.textContent = `✓ Downloaded ${filename} from UI memory`;
+    } else {
+      if (status) status.textContent = `✗ Download failed: ${e.message}`;
+      alert(`Download failed: ${e.message}\nCheck that the Node server is running and SERVER URL is correct: ${SERVER}`);
+    }
+  }
 }
 
 document.getElementById("hist-dl-history-btn").addEventListener("click", () => {
   downloadFromServer("/download/history", histData, "car_props_history.json");
 });
 
-document.getElementById("hist-dl-cache-btn").addEventListener("click", () => {
-  downloadFromServer("/download/cache", null, "car_props_cache.json");
+document.getElementById("hist-dl-cache-btn").addEventListener("click", async () => {
+  let fallback = null;
+  try {
+    const res = await fetch(`${SERVER}/properties?t=${Date.now()}`, { cache: "no-store" });
+    const data = await res.json();
+    fallback = data.properties || data;
+  } catch {}
+  downloadFromServer("/download/cache", fallback, "car_props_cache.json");
 });
 
 // ── Launch Termux via ADB (no server needed) ──
