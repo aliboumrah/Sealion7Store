@@ -53,6 +53,25 @@ function writeJsonFile(file, data) {
   }
 }
 
+function sendJsonFileDownload(res, file, fallbackData, filename) {
+  let payload;
+  try {
+    if (fs.existsSync(file)) payload = fs.readFileSync(file);
+    else payload = Buffer.from(JSON.stringify(fallbackData, null, 2));
+  } catch (e) {
+    payload = Buffer.from(JSON.stringify({ success: false, error: e.message }, null, 2));
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Content-Length": payload.length,
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Expose-Headers": "Content-Disposition, Content-Length"
+  });
+  res.end(payload);
+}
+
 function sameValue(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -803,6 +822,18 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200);
       res.end(JSON.stringify({ places: [], error: e.message }));
     }
+    return;
+  }
+
+  // ── GET /download/cache — download latest cached car property values ──
+  if (req.method === "GET" && pathname === "/download/cache") {
+    sendJsonFileDownload(res, CACHE_FILE, carPropsCache || {}, "car_props_cache.json");
+    return;
+  }
+
+  // ── GET /download/history — download changed car property snapshots ──
+  if (req.method === "GET" && pathname === "/download/history") {
+    sendJsonFileDownload(res, HISTORY_FILE, carPropsHistory || [], "car_props_history.json");
     return;
   }
 

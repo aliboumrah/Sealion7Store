@@ -412,6 +412,9 @@
   #history-list { overflow-y:auto; flex:1; scrollbar-width:thin; scrollbar-color:var(--border2) transparent; }
   .hist-item { font-family:var(--mono); font-size:11px; color:var(--muted); padding:8px 14px; cursor:pointer; border-bottom:1px solid var(--border2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:all .1s; }
   .hist-item:hover { background:var(--accent-dim); color:var(--accent); padding-left:18px; }
+  .hist-metric-item { display:flex; align-items:center; gap:7px; font-family:var(--mono); cursor:pointer; padding:6px 7px; border:1px solid var(--border2); border-radius:8px; background:var(--bg); line-height:1.35; }
+  .hist-metric-item:hover { border-color:var(--accent); background:var(--accent-dim); color:var(--accent); }
+  .hist-metric-item input { accent-color:var(--accent); }
   @media(max-width:640px){ .history-panel{display:none;} }
 </style>
 </head>
@@ -638,22 +641,7 @@
   <!-- History pane -->
   <div id="history-pane" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);">
     <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;">
-      <select id="hist-metric" multiple size="4" title="Hold Ctrl to select multiple metrics"
-        style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:8px;outline:none;cursor:pointer;min-width:220px;">
-        <option value="0x21604402" selected>🔋 SOC %</option>
-        <option value="0x21604421">⚡ EV kWh</option>
-        <option value="0x21604601">🚗 Speed km/h</option>
-        <option value="0x21404401">📍 EV Range km</option>
-        <option value="0x21604409">🛣 Odometer km</option>
-        <option value="0x21404604">🌡 Ext Temp °C</option>
-        <option value="0x21603408">🔌 Charge Power W</option>
-        <option value="0x21601421">📊 Last 50km kWh/km</option>
-        <option value="0x21604405">📈 Avg Consump kWh</option>
-        <option value="0x2160801d">🔵 Tyre FL psi</option>
-        <option value="0x2160801e">🔵 Tyre FR psi</option>
-        <option value="0x2160801f">🔵 Tyre RL psi</option>
-        <option value="0x21608020">🔵 Tyre RR psi</option>
-      </select>
+      <span style="font-size:11px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em;">Time:</span>
       <select id="hist-time-filter" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:8px;outline:none;cursor:pointer;">
         <option value="all">All time</option>
         <option value="15m">Last 15 min</option>
@@ -903,10 +891,29 @@
     </div><!-- /guide-steps -->
   </div><!-- /linux-pane -->
 
-  <!-- History sidebar -->
-  <div class="history-panel">
-    <div class="panel-title">History</div>
-    <div id="history-list"></div>
+  <!-- Metrics selection sidebar -->
+  <div class="history-panel" id="metrics-panel">
+    <div class="panel-title">Metrics</div>
+    <div id="history-list" style="display:none"></div>
+    <div id="hist-metric-list" style="overflow-y:auto;flex:1;padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:11px;color:var(--text);">
+      <label class="hist-metric-item"><input type="checkbox" value="0x21604402" checked> 🔋 SOC %</label>
+      <label class="hist-metric-item"><input type="checkbox" value="0x21604421"> ⚡ EV kWh</label>
+      <label class="hist-metric-item"><input type="checkbox" value="0x21604601"> 🚗 Speed km/h</label>
+      <label class="hist-metric-item"><input type="checkbox" value="0x21404401"> 📍 EV Range km</label>
+      <label class="hist-metric-item"><input type="checkbox" value="0x21604409"> 🛣 Odometer km</label>
+      <label class="hist-metric-item"><input type="checkbox" value="0x21404604"> 🌡 Ext Temp °C</label>
+      <label class="hist-metric-item"><input type="checkbox" value="0x21603408"> 🔌 Charge Power W</label>
+      <label class="hist-metric-item"><input type="checkbox" value="0x21601421"> 📊 Last 50km kWh/km</label>
+      <label class="hist-metric-item"><input type="checkbox" value="0x21604405"> 📈 Avg Consump kWh</label>
+      <label class="hist-metric-item"><input type="checkbox" value="0x2160801d"> 🔵 Tyre FL psi</label>
+      <label class="hist-metric-item"><input type="checkbox" value="0x2160801e"> 🔵 Tyre FR psi</label>
+      <label class="hist-metric-item"><input type="checkbox" value="0x2160801f"> 🔵 Tyre RL psi</label>
+      <label class="hist-metric-item"><input type="checkbox" value="0x21608020"> 🔵 Tyre RR psi</label>
+    </div>
+    <div style="border-top:1px solid var(--border2);padding:10px 12px;display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="hdr-btn" id="hist-select-all-btn" style="font-size:10px;padding:4px 8px;">All</button>
+      <button class="hdr-btn" id="hist-clear-metrics-btn" style="font-size:10px;padding:4px 8px;">Clear</button>
+    </div>
   </div>
 </div>
 
@@ -2472,13 +2479,17 @@ async function loadHistory() {
 }
 
 function getSelectedHistMetrics() {
-  const select = document.getElementById("hist-metric");
-  const selected = Array.from(select.selectedOptions || []).map(o => ({ id: o.value, label: o.textContent.trim() }));
+  const boxes = Array.from(document.querySelectorAll('#hist-metric-list input[type="checkbox"]'));
+  const selected = boxes
+    .filter(b => b.checked)
+    .map(b => ({ id: b.value.toLowerCase(), label: b.parentElement.textContent.trim() }));
+
   if (selected.length) return selected;
-  const first = select.options[0];
-  if (first) {
-    first.selected = true;
-    return [{ id: first.value, label: first.textContent.trim() }];
+
+  // Never leave the chart without a metric: fallback to SOC.
+  if (boxes[0]) {
+    boxes[0].checked = true;
+    return [{ id: boxes[0].value.toLowerCase(), label: boxes[0].parentElement.textContent.trim() }];
   }
   return [];
 }
@@ -2515,8 +2526,20 @@ function updateHistoryCustomInputs() {
 }
 
 function metricValueFromSnapshot(snapshot, id) {
-  const raw = snapshot[id];
+  const key = id.toLowerCase();
+  let raw = snapshot[key];
+
+  // Support both history formats:
+  // 1) { ts, "0x...": value }
+  // 2) { ts, properties: { "0x...": { value, status } } }
+  if ((raw === undefined || raw === null) && snapshot.properties) {
+    raw = snapshot.properties[key];
+    if (raw && typeof raw === "object" && "value" in raw) raw = raw.value;
+  }
+
+  if (raw && typeof raw === "object" && "value" in raw) raw = raw.value;
   if (raw === undefined || raw === null) return null;
+
   const val = Array.isArray(raw) ? raw[0] : raw;
   const num = Number(val);
   return Number.isFinite(num) ? num : null;
@@ -2641,7 +2664,19 @@ function renderHistChart() {
 }
 
 document.getElementById("hist-refresh-btn").addEventListener("click", loadHistory);
-document.getElementById("hist-metric").addEventListener("change", renderHistChart);
+document.querySelectorAll('#hist-metric-list input[type="checkbox"]').forEach(box => {
+  box.addEventListener("change", () => {
+    requestAnimationFrame(renderHistChart);
+  });
+});
+document.getElementById("hist-select-all-btn").addEventListener("click", () => {
+  document.querySelectorAll('#hist-metric-list input[type="checkbox"]').forEach(b => b.checked = true);
+  renderHistChart();
+});
+document.getElementById("hist-clear-metrics-btn").addEventListener("click", () => {
+  document.querySelectorAll('#hist-metric-list input[type="checkbox"]').forEach(b => b.checked = false);
+  renderHistChart();
+});
 document.getElementById("hist-time-filter").addEventListener("change", () => { updateHistoryCustomInputs(); renderHistChart(); });
 document.getElementById("hist-from").addEventListener("change", renderHistChart);
 document.getElementById("hist-to").addEventListener("change", renderHistChart);
@@ -2655,19 +2690,21 @@ function downloadJson(data, filename) {
   URL.revokeObjectURL(url);
 }
 
+function downloadFromServer(endpoint, fallbackData, filename) {
+  const a = document.createElement("a");
+  a.href = `${SERVER}${endpoint}`;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 document.getElementById("hist-dl-history-btn").addEventListener("click", () => {
-  if (!histData.length) { loadHistory().then(() => downloadJson(histData, "sealion7_history.json")); return; }
-  downloadJson(histData, "sealion7_history.json");
+  downloadFromServer("/download/history", histData, "car_props_history.json");
 });
 
-document.getElementById("hist-dl-cache-btn").addEventListener("click", async () => {
-  try {
-    const res  = await fetch(`${SERVER}/properties`);
-    const data = await res.json();
-    downloadJson(data.properties, "sealion7_cache.json");
-  } catch(e) {
-    alert("✗ " + e.message);
-  }
+document.getElementById("hist-dl-cache-btn").addEventListener("click", () => {
+  downloadFromServer("/download/cache", null, "car_props_cache.json");
 });
 
 // ── Launch Termux via ADB (no server needed) ──
