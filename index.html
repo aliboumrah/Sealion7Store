@@ -2102,29 +2102,33 @@ function abrpGetReturnedAuthCodeFromUrl() {
 }
 
 async function abrpHandleReturnedAuthCode() {
-  const authCode = abrpGetReturnedAuthCodeFromUrl();
-  if (!authCode) return false;
+  // The early handler (top of file) already exchanges the code directly with ABRP
+  // and stores the token in localStorage. Here we just pick it up.
+  const storedToken = localStorage.getItem("abrpToken");
+  const oauthStatus = localStorage.getItem("abrpOAuthStatus");
 
-  abrpSetStatus("⟳ Exchanging ABRP auth code…", "var(--accent)");
-  try {
-    const res = await fetch(SERVER + "/abrp-oauth-token?code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(ABRP_CLIENT_ID));
-    const data = await res.json();
-    if (!data.access_token) throw new Error(data.error || JSON.stringify(data));
-
-    abrpToken = data.access_token;
-    localStorage.setItem("abrpToken", abrpToken);
+  if (storedToken && oauthStatus === "connected") {
+    abrpToken = storedToken;
     const tokenInput = document.getElementById("abrp-token");
-    if (tokenInput) tokenInput.value = abrpToken;
-
-    // Remove the one-time OAuth code from the browser URL after successful exchange.
-    window.history.replaceState({}, "", window.location.pathname);
+    if (tokenInput) tokenInput.value = storedToken;
     await abrpRefreshStatus();
     return true;
-  } catch(e) {
-    localStorage.setItem("abrpOAuthError", String(e.message || e));
-    abrpSetStatus("✗ OAuth failed: " + e.message, "var(--red)");
-    return false;
   }
+
+  // If early handler is still exchanging (async), wait and retry once
+  if (oauthStatus === "exchanging") {
+    await new Promise(r => setTimeout(r, 2000));
+    const token = localStorage.getItem("abrpToken");
+    if (token) {
+      abrpToken = token;
+      const tokenInput = document.getElementById("abrp-token");
+      if (tokenInput) tokenInput.value = token;
+      await abrpRefreshStatus();
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function abrpStartOAuthLogin() {
