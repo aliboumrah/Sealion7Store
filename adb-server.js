@@ -765,58 +765,68 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ── GET /abrp-oauth-token — exchange auth_code for access_token ──
-  // SEALION 7 PILOT public OAuth flow: no API key / client_secret required.
   if (req.method === "GET" && pathname === "/abrp-oauth-token") {
     const code = parsed.query.auth_code || parsed.query.code;
-    const clientId = parsed.query.client_id || process.env.ABRP_CLIENT_ID || "SEALION 7 PILOT";
+    const clientId = parsed.query.client_id || process.env.ABRP_CLIENT_ID || "";
+    const clientSecret = parsed.query.client_secret || process.env.ABRP_API_KEY || "";
     if (!code) {
       res.writeHead(400);
-      res.end(JSON.stringify({ success: false, error: "Missing auth_code" }));
+      res.end(JSON.stringify({ error: "Missing auth_code" }));
+      return;
+    }
+    if (!clientId || !clientSecret) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: "Missing client_id or client_secret / API key" }));
       return;
     }
     try {
       const https = require("https");
-      const tokenPath = "/1/oauth/token?client_id=" + encodeURIComponent(clientId) + "&code=" + encodeURIComponent(code);
+      const tokenUrl = "https://api.iternio.com/1/oauth/token?client_id=" + encodeURIComponent(clientId) + "&client_secret=" + encodeURIComponent(clientSecret) + "&code=" + encodeURIComponent(code);
       const data = await new Promise((resolve, reject) => {
-        https.get({ hostname: "api.iternio.com", path: tokenPath, headers: { "User-Agent": "SEALION 7 PILOT" } }, (r) => {
+        https.get(tokenUrl, { headers: { "User-Agent": "Sealion7-ADB-Shell" } }, (r) => {
           let body = "";
           r.on("data", c => body += c);
-          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
+          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(new Error(body || e.message)); } });
         }).on("error", reject);
       });
       res.writeHead(200);
       res.end(JSON.stringify(data));
     } catch(e) {
       res.writeHead(200);
-      res.end(JSON.stringify({ success: false, error: e.message }));
+      res.end(JSON.stringify({ error: e.message }));
     }
     return;
   }
 
   // ── GET /abrp-oauth-me — get user info from access_token ──
-  // Uses OAuth access_token only. No API key is required for SEALION 7 PILOT OAuth.
   if (req.method === "GET" && pathname === "/abrp-oauth-me") {
-    const token = parsed.query.token || parsed.query.access_token || "";
+    const token = parsed.query.token;
+    const apiKey = parsed.query.api_key || process.env.ABRP_API_KEY || "";
     if (!token) {
       res.writeHead(400);
-      res.end(JSON.stringify({ success: false, error: "Missing access token" }));
+      res.end(JSON.stringify({ error: "Missing token" }));
+      return;
+    }
+    if (!apiKey) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: "Missing api_key" }));
       return;
     }
     try {
       const https = require("https");
-      const mePath = "/1/oauth/me?access_token=" + encodeURIComponent(token);
+      const meUrl = "https://api.iternio.com/1/oauth/me?access_token=" + encodeURIComponent(token) + "&api_key=" + encodeURIComponent(apiKey);
       const data = await new Promise((resolve, reject) => {
-        https.get({ hostname: "api.iternio.com", path: mePath, headers: { "User-Agent": "SEALION 7 PILOT" } }, (r) => {
+        https.get(meUrl, { headers: { "User-Agent": "Sealion7-ADB-Shell" } }, (r) => {
           let body = "";
           r.on("data", c => body += c);
-          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
+          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(new Error(body || e.message)); } });
         }).on("error", reject);
       });
       res.writeHead(200);
       res.end(JSON.stringify(data));
     } catch(e) {
       res.writeHead(200);
-      res.end(JSON.stringify({ success: false, error: e.message }));
+      res.end(JSON.stringify({ error: e.message }));
     }
     return;
   }

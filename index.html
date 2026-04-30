@@ -1943,30 +1943,28 @@ let abrpInterval = null;
 let abrpRunning  = false;
 
 const ABRP_AUTH_URL  = "https://abetterrouteplanner.com/oauth/auth";
-const ABRP_CLIENT_ID = "SEALION 7 PILOT";
 const ABRP_REDIRECT  = window.location.origin + window.location.pathname;
 
-function abrpSetConnectionBadge(connected, text) {
-  const badge = document.getElementById("abrp-connection-badge");
-  if (!badge) return;
-  if (connected) {
-    badge.innerHTML = "✅ Connected to ABRP" + (text ? " · " + text : "");
-    badge.style.color = "var(--green)";
-    badge.style.borderColor = "var(--green)";
-    badge.style.background = "rgba(0,212,138,0.08)";
-  } else {
-    badge.textContent = text || "ABRP: not connected";
-    badge.style.color = "var(--muted)";
-    badge.style.borderColor = "var(--border)";
-    badge.style.background = "var(--surface2)";
-  }
-}
 function abrpLoadOAuthSettings() {
+  const cid = document.getElementById("abrp-client-id");
+  const key = document.getElementById("abrp-api-key");
   const red = document.getElementById("abrp-redirect-preview");
+  if (cid) cid.value = localStorage.getItem("abrpClientId") || "";
+  if (key) key.value = localStorage.getItem("abrpApiKey") || "";
   if (red) red.textContent = ABRP_REDIRECT;
-  abrpSetConnectionBadge(!!abrpToken);
 }
-abrpLoadOAuthSettings();
+function abrpSaveOAuthSettings() {
+  const cid = (document.getElementById("abrp-client-id")?.value || "").trim();
+  const key = (document.getElementById("abrp-api-key")?.value || "").trim();
+  if (cid) localStorage.setItem("abrpClientId", cid); else localStorage.removeItem("abrpClientId");
+  if (key) localStorage.setItem("abrpApiKey", key); else localStorage.removeItem("abrpApiKey");
+  const st = document.getElementById("abrp-status");
+  if (st) st.innerHTML = '<span style="color:var(--green);">✓ OAuth settings saved</span>';
+}
+function abrpClearOAuthSettings() {
+  localStorage.removeItem("abrpClientId");
+  localStorage.removeItem("abrpApiKey");
+  abrpLoadOAuthSettings();
   const st = document.getElementById("abrp-status");
   if (st) st.textContent = "OAuth settings cleared.";
 }
@@ -1987,7 +1985,9 @@ if (abrpToken) {
     try {
       const expectedState = localStorage.getItem("abrpOAuthState") || "";
       if (expectedState && returnedState && expectedState !== returnedState) throw new Error("OAuth state mismatch");
-      const res = await fetch(SERVER + "/abrp-oauth-token?auth_code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(ABRP_CLIENT_ID));
+      const clientId = localStorage.getItem("abrpClientId") || "";
+      const apiKey = localStorage.getItem("abrpApiKey") || "";
+      const res = await fetch(SERVER + "/abrp-oauth-token?auth_code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(clientId) + "&client_secret=" + encodeURIComponent(apiKey));
       const data = await res.json();
       if (data.access_token) {
         abrpToken = data.access_token;
@@ -2009,7 +2009,8 @@ if (abrpToken) {
 
 async function abrpFetchUserInfo() {
   try {
-    const res = await fetch(SERVER + "/abrp-oauth-me?token=" + encodeURIComponent(abrpToken));
+    const apiKey = localStorage.getItem("abrpApiKey") || "";
+    const res = await fetch(SERVER + "/abrp-oauth-me?token=" + encodeURIComponent(abrpToken) + "&api_key=" + encodeURIComponent(apiKey));
     const data = await res.json();
     if (data.user_id) {
       document.getElementById("abrp-user-info").style.display = "flex";
@@ -2017,19 +2018,29 @@ async function abrpFetchUserInfo() {
       document.getElementById("abrp-user-name").textContent = data.full_name || "ABRP User";
       document.getElementById("abrp-user-email").textContent = data.email || "";
       document.getElementById("abrp-vehicle-name").textContent = data.vehicle_name ? "🚗 " + data.vehicle_name : "";
-      abrpSetConnectionBadge(true, data.vehicle_name || data.email || "connected");
     }
   } catch(e) {}
 }
 
+document.getElementById("abrp-save-oauth-btn")?.addEventListener("click", abrpSaveOAuthSettings);
+document.getElementById("abrp-clear-oauth-btn")?.addEventListener("click", abrpClearOAuthSettings);
 document.getElementById("abrp-oauth-btn").addEventListener("click", () => {
-  const state = Math.random().toString(36).slice(2);
+  abrpSaveOAuthSettings();
+  const clientId = localStorage.getItem("abrpClientId") || "";
+  const apiKey = localStorage.getItem("abrpApiKey") || "";
+  if (!clientId || !apiKey) {
+    const st = document.getElementById("abrp-status");
+    if (st) st.innerHTML = '<span style="color:var(--red);">✗ Enter client_id and API key first</span>';
+    return;
+  }
+  const state = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
   localStorage.setItem("abrpOAuthState", state);
-  const scope = "set_telemetry get_telemetry get_plan";
-  const authUrl = ABRP_AUTH_URL + "?client_id=" + encodeURIComponent(ABRP_CLIENT_ID) + "&scope=" + encodeURIComponent(scope) + "&response_type=code&redirect_uri=" + encodeURIComponent(ABRP_REDIRECT) + "&state=" + encodeURIComponent(state);
+  const scope = "get_telemetry set_telemetry get_plan";
+  const authUrl = ABRP_AUTH_URL + "?client_id=" + encodeURIComponent(clientId) + "&scope=" + encodeURIComponent(scope) + "&response_type=code&redirect_uri=" + encodeURIComponent(ABRP_REDIRECT) + "&state=" + encodeURIComponent(state);
   window.location.href = authUrl;
 });
 
+// ── Logout ──
 document.getElementById("abrp-logout-btn").addEventListener("click", () => {
   abrpToken = "";
   localStorage.removeItem("abrpToken");
@@ -2037,7 +2048,6 @@ document.getElementById("abrp-logout-btn").addEventListener("click", () => {
   document.getElementById("abrp-user-info").style.display    = "none";
   document.getElementById("abrp-login-section").style.display = "";
   document.getElementById("abrp-status").textContent = "Logged out.";
-  abrpSetConnectionBadge(false);
 });
 
 // ── Manual token save ──
@@ -2829,6 +2839,100 @@ endLabels.forEach((l,idx)=>{
 })();
 </script>
 
+
+
+<!-- Robust tab controller hotfix: keeps tabs working even if another module fails -->
+<style id="tab-hotfix-style">
+  .tabs { position: relative !important; z-index: 50 !important; pointer-events: auto !important; }
+  .tab { pointer-events: auto !important; user-select: none !important; }
+  .main > div { min-width: 0; }
+</style>
+<script id="tab-hotfix-controller">
+(function(){
+  const paneMap = {
+    linux: 'linux-pane',
+    termux: 'termux-pane',
+    apk: 'apk-pane',
+    packages: 'packages-pane',
+    carservice: 'carservice-pane',
+    navigate: 'navigate-pane',
+    history: 'history-pane',
+    shell: 'terminal-pane',
+    settings: 'settings-pane'
+  };
+
+  function safeCall(name){
+    try { if (typeof window[name] === 'function') window[name](); } catch(e) { console.warn(name + ' failed:', e); }
+  }
+
+  function showTab(tabName){
+    if (!paneMap[tabName]) return;
+
+    document.querySelectorAll('.tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.tab === tabName);
+    });
+
+    Object.entries(paneMap).forEach(([key, id]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (key === tabName) {
+        el.style.display = 'flex';
+        el.style.flexDirection = 'column';
+      } else {
+        el.style.display = 'none';
+      }
+    });
+
+    document.body.classList.toggle('history-active', tabName === 'history');
+
+    const qb = document.getElementById('quick-bar');
+    if (qb) qb.style.display = tabName === 'shell' ? 'flex' : 'none';
+
+    try { localStorage.setItem('activeTab', tabName); } catch(e) {}
+
+    // lazy refresh hooks; all protected so one broken feature cannot break tabs
+    if (tabName === 'packages') safeCall('loadPackages');
+    if (tabName === 'carservice') safeCall('loadCarService');
+    if (tabName === 'history') {
+      safeCall('loadHistory');
+      if (typeof window.forceRenderHistChart === 'function') setTimeout(window.forceRenderHistChart, 80);
+      else if (typeof window.renderHistChart === 'function') setTimeout(window.renderHistChart, 80);
+    }
+    if (tabName === 'navigate') safeCall('navUpdateLiveSummary');
+    if (tabName === 'termux') safeCall('checkSshStatus');
+    if (tabName === 'settings') {
+      safeCall('abrpRefreshStatus');
+      safeCall('refreshAbrpStatus');
+    }
+
+    const shellInput = document.getElementById('cmd-input');
+    if (tabName === 'shell' && shellInput) setTimeout(() => shellInput.focus(), 20);
+  }
+
+  // Override any previous switchTab implementation with the robust one.
+  window.switchTab = showTab;
+
+  function bindTabs(){
+    document.querySelectorAll('.tab[data-tab]').forEach(tab => {
+      if (tab.dataset.tabHotfixBound === '1') return;
+      tab.dataset.tabHotfixBound = '1';
+      tab.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        showTab(this.dataset.tab);
+      }, true);
+    });
+
+    const current = (document.querySelector('.tab.active') || {}).dataset?.tab;
+    const saved = (() => { try { return localStorage.getItem('activeTab'); } catch(e) { return null; } })();
+    const initial = paneMap[current] ? current : (paneMap[saved] ? saved : 'apk');
+    showTab(initial);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindTabs);
+  else bindTabs();
+})();
+</script>
+
 </body>
 </html>
-abrpLoadOAuthSettings();document.getElementById("abrp-logout-btn")
