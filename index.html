@@ -977,38 +977,6 @@ async function checkServer() {
   }
 }
 
-// Check ADB directly via adb devices command through server shell
-async function checkAdbDirect() {
-  try {
-    const res  = await fetch(`${SERVER}/shell`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command: "devices", adbCmd: true })
-    });
-    const data = await res.json();
-    // Parse "adb devices" output
-    const lines = (data.output || "").split("\n")
-      .map(l => l.trim())
-      .filter(l => l && !l.startsWith("List of") && l.includes("\t"));
-    const connected = lines.filter(l => l.includes("device") && !l.includes("offline"));
-    if (connected.length > 0) {
-      adbDot.className     = "status-dot online";
-      adbLabel.textContent = `ADB ✓ (${connected.length})`;
-      adbReady = true;
-    } else {
-      adbDot.className     = "status-dot warn";
-      adbLabel.textContent = "ADB no device";
-      adbReady = false;
-    }
-  } catch {
-    adbDot.className     = "status-dot";
-    adbLabel.textContent = "ADB unknown";
-    adbReady = false;
-  }
-  updateInstallBlocking();
-  updateTabVisibility();
-}
-
 async function checkAdb(devices) {
   if (devices && devices.length) {
     adbDot.className     = "status-dot online";
@@ -1079,17 +1047,13 @@ async function fetchDevices() {
     deviceSel.innerHTML = `<option value="">— server offline —</option>`;
     return;
   }
-
-  // Check ADB directly via "adb devices" command
-  await checkAdbDirect();
-
-  // Also populate device selector via server
   try {
     const res  = await fetch(`${SERVER}/devices`);
     const data = await res.json();
     deviceSel.innerHTML = "";
     if (!data.devices || !data.devices.length) {
       deviceSel.innerHTML = `<option value="">— no device —</option>`;
+      await checkAdb([]);
       return;
     }
     data.devices.forEach(d => {
@@ -1098,6 +1062,7 @@ async function fetchDevices() {
       o.textContent = `${d.model} (${d.serial})`;
       deviceSel.appendChild(o);
     });
+    await checkAdb(data.devices);
   } catch {
     deviceSel.innerHTML = `<option value="">— error —</option>`;
   }
