@@ -949,10 +949,29 @@ body.history-active #metrics-panel { display:flex; }
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: formData.toString()
     })
-      .then(r => r.json())
-      .then(data => {
+      .then(r => r.text())
+      .then(rawText => {
+        console.log('🔍 ABRP raw response:', rawText.substring(0, 200));
+
+        // ABRP sometimes returns "ok"\n{...} or plain text — parse safely
+        let data = {};
+        try {
+          data = JSON.parse(rawText);
+        } catch(e) {
+          // Try extracting JSON object from the response
+          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try { data = JSON.parse(jsonMatch[0]); } catch(e2) {}
+          }
+          // Try extracting a bare token string (some APIs return just the token)
+          const tokenMatch = rawText.match(/[a-zA-Z0-9\-_]{20,}/);
+          if (!data.access_token && tokenMatch) {
+            data = { access_token: tokenMatch[0] };
+          }
+        }
+
         const token = data.access_token;
-        if (!token) throw new Error((data.error_description || data.error || JSON.stringify(data)));
+        if (!token) throw new Error('No token in response: ' + rawText.substring(0, 100));
 
         console.log('✅ ABRP OAuth: got access token, saving...');
 
