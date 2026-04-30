@@ -30,9 +30,9 @@ const HISTORY_FILE     = path.join(__dirname, "car_props_history.json");
 const HISTORY_MAX_ROWS = 20_000;
 
 // ── ABRP OAuth / token storage ──
-const ABRP_CLIENT_ID  = "SEALION 7 PILOT";
-const ABRP_CLIENT_SECRET = process.env.ABRP_CLIENT_SECRET || ""; // Set via: export ABRP_CLIENT_SECRET=your_secret
-const ABRP_REDIRECT_URI = "https://aliboumrah.github.io/Sealion7Store/";
+const ABRP_CLIENT_ID     = "SEALION 7 PILOT";
+const ABRP_CLIENT_SECRET = process.env.ABRP_CLIENT_SECRET || ""; // export ABRP_CLIENT_SECRET=your_secret
+const ABRP_REDIRECT_URI  = "https://aliboumrah.github.io/Sealion7Store/oauth-callback.html";
 const ABRP_TOKEN_FILE = path.join(__dirname, "abrp_token.json");
 let ABRP_TOKEN = "";
 let ABRP_USER  = null;
@@ -784,31 +784,25 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ error: "Missing code" }));
       return;
     }
-    if (!ABRP_CLIENT_SECRET) {
-      console.error("❌ ABRP_CLIENT_SECRET is not set! Run: export ABRP_CLIENT_SECRET=your_secret");
-      res.writeHead(500, { "Access-Control-Allow-Origin": "*" });
-      res.end(JSON.stringify({ error: "ABRP_CLIENT_SECRET not configured on server" }));
-      return;
-    }
     try {
-      // Per ABRP API docs: GET with client_id, client_secret, and code
       const tokenUrl = "https://api.iternio.com/1/oauth/token" +
         "?client_id=" + encodeURIComponent(clientId) +
-        "&client_secret=" + encodeURIComponent(ABRP_CLIENT_SECRET) +
+        (ABRP_CLIENT_SECRET ? "&client_secret=" + encodeURIComponent(ABRP_CLIENT_SECRET) : "") +
         "&code=" + encodeURIComponent(code);
-      console.log("🔄 ABRP OAuth exchange:", { client_id: clientId, code: code.substring(0, 10) + "..." });
+      console.log("🔄 ABRP OAuth exchange", { client_id: clientId, code: code.substring(0, 10) + "...", has_secret: !!ABRP_CLIENT_SECRET });
       const data = await httpsJsonGet(tokenUrl);
-      console.log("🔍 ABRP token response:", JSON.stringify(data).substring(0, 200));
-      const token = data.access_token || data.token;
-      if (token) {
-        saveAbrpToken(token);
-        await fetchAbrpUserInfo(token);
+      console.log("🔍 ABRP response:", JSON.stringify(data).substring(0, 200));
+      if (data.access_token) {
+        saveAbrpToken(data.access_token);
+        await fetchAbrpUserInfo(data.access_token);
         console.log("✅ ABRP token saved, user:", ABRP_USER?.full_name || "unknown");
+        data.connected = true;
+        data.user = ABRP_USER;
       }
       res.writeHead(200, { "Access-Control-Allow-Origin": "*" });
-      res.end(JSON.stringify({ ...data, access_token: token, connected: !!token, user: ABRP_USER }));
+      res.end(JSON.stringify(data));
     } catch(e) {
-      console.error("❌ ABRP OAuth exchange error:", e.message);
+      console.error("❌ ABRP OAuth error:", e.message);
       res.writeHead(200, { "Access-Control-Allow-Origin": "*" });
       res.end(JSON.stringify({ error: e.message }));
     }

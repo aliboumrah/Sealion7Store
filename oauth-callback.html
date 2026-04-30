@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ABRP Login – Sealion 7</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #080c10;
+      color: #e8f0f8;
+      font-family: "Noto Sans", system-ui, sans-serif;
+      height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: #0e1520;
+      border: 1px solid #1e2e45;
+      border-radius: 16px;
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 420px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .icon { font-size: 48px; }
+    h1 { font-size: 20px; font-weight: 700; color: #e8f0f8; }
+    .status {
+      font-size: 14px;
+      color: #5a7a9a;
+      min-height: 20px;
+      line-height: 1.5;
+    }
+    .bar-wrap {
+      background: #141e2e;
+      border-radius: 100px;
+      height: 6px;
+      overflow: hidden;
+    }
+    .bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #00c8d4, #00d48a);
+      border-radius: 100px;
+      transition: width 0.4s ease;
+    }
+    .token-box {
+      background: #141e2e;
+      border: 1px solid #1e2e45;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-family: monospace;
+      font-size: 11px;
+      color: #00c8d4;
+      word-break: break-all;
+      text-align: left;
+      display: none;
+    }
+    .btn {
+      background: linear-gradient(135deg, #00c8d4, #00d48a);
+      color: #001014;
+      font-weight: 700;
+      font-size: 14px;
+      border: none;
+      border-radius: 10px;
+      padding: 14px;
+      cursor: pointer;
+      display: none;
+      width: 100%;
+    }
+    .btn:hover { opacity: 0.9; }
+    .error { color: #ff4d6a; font-size: 13px; display: none; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="icon" id="icon">🔐</div>
+  <h1 id="title">Connecting to ABRP…</h1>
+  <div class="status" id="status">Reading authorization code…</div>
+  <div class="bar-wrap"><div class="bar" id="bar"></div></div>
+  <div class="token-box" id="token-box"></div>
+  <div class="error" id="error"></div>
+  <button class="btn" id="back-btn" onclick="goBack()">← Back to App</button>
+</div>
+
+<script>
+(async function() {
+  const $ = id => document.getElementById(id);
+  const status  = $('status');
+  const bar     = $('bar');
+  const icon    = $('icon');
+  const title   = $('title');
+  const tokenBox = $('token-box');
+  const errorEl = $('error');
+  const backBtn = $('back-btn');
+
+  function setProgress(pct, msg) {
+    bar.style.width = pct + '%';
+    status.textContent = msg;
+  }
+
+  function showError(msg) {
+    icon.textContent = '❌';
+    title.textContent = 'Login Failed';
+    errorEl.textContent = msg;
+    errorEl.style.display = '';
+    bar.style.background = '#ff4d6a';
+    bar.style.width = '100%';
+    backBtn.style.display = '';
+    console.error('ABRP OAuth Error:', msg);
+  }
+
+  function showSuccess(token) {
+    icon.textContent = '✅';
+    title.textContent = 'Connected to ABRP!';
+    setProgress(100, 'Token saved. Returning to app…');
+    tokenBox.textContent = token.substring(0, 30) + '…';
+    tokenBox.style.display = '';
+    backBtn.style.display = '';
+    backBtn.textContent = '← Back to App';
+  }
+
+  // ── Step 1: Extract auth_code from URL ──────────────────────────────────
+  setProgress(10, 'Reading authorization code…');
+
+  const params = new URLSearchParams(window.location.search);
+  // ABRP returns auth_code (per their API docs), some versions return code
+  const authCode = params.get('auth_code') || params.get('code');
+  const oauthError = params.get('error');
+
+  if (oauthError) {
+    showError('ABRP returned error: ' + oauthError);
+    return;
+  }
+
+  if (!authCode) {
+    showError('No authorization code in URL.\n' + window.location.search);
+    return;
+  }
+
+  console.log('✅ Got auth_code:', authCode.substring(0, 15) + '...');
+  setProgress(30, 'Got authorization code. Contacting server…');
+
+  // ── Step 2: Send code to backend for exchange ───────────────────────────
+  const server = (localStorage.getItem('serverUrl') || 'http://192.168.1.20:3000').replace(/\/$/, '');
+
+  let token = null;
+  try {
+    setProgress(50, 'Exchanging code for token…');
+
+    const res = await fetch(
+      server + '/abrp-oauth-token?code=' + encodeURIComponent(authCode),
+      { cache: 'no-store' }
+    );
+    const data = await res.json();
+
+    console.log('Backend response:', data);
+
+    if (data.error) throw new Error(data.error);
+
+    token = data.access_token || data.token;
+    if (!token) throw new Error('No token in response: ' + JSON.stringify(data));
+
+  } catch (err) {
+    showError('Server exchange failed: ' + err.message + '\n\nMake sure your backend is running at ' + server);
+    return;
+  }
+
+  // ── Step 3: Save token to localStorage ─────────────────────────────────
+  setProgress(80, 'Saving token…');
+  localStorage.setItem('abrpToken', token);
+  localStorage.setItem('abrpOAuthStatus', 'connected');
+  localStorage.removeItem('abrpOAuthError');
+  console.log('✅ Token saved to localStorage');
+
+  // ── Step 4: Done — show success and redirect back ───────────────────────
+  setProgress(100, 'Done! Returning to app…');
+  showSuccess(token);
+
+  // Auto-redirect after 2 seconds
+  setTimeout(() => goBack(), 2000);
+})();
+
+function goBack() {
+  // Go back to main app
+  window.location.href = 'https://aliboumrah.github.io/Sealion7Store/';
+}
+</script>
+</body>
+</html>
