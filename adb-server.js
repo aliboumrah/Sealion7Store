@@ -889,6 +889,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+
+  // ── POST/GET /history/clear — clear stored history, keep latest cache ──
+  if ((req.method === "POST" || req.method === "GET") && pathname === "/history/clear") {
+    const removed = Array.isArray(carPropsHistory) ? carPropsHistory.length : 0;
+    carPropsHistory = [];
+    try {
+      fs.writeFileSync(HISTORY_FILE, "[]\n");
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, removed, history: [], count: 0 }));
+    } catch(e) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+    return;
+  }
+
   // ── GET /history — return reconstructed full snapshots for the UI chart ──
   if (req.method === "GET" && pathname === "/history") {
     try {

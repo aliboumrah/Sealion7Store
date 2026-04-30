@@ -657,6 +657,7 @@ body.history-active #metrics-panel { display:flex; }
       <button id="hist-refresh-btn" class="hdr-btn">⟳ Refresh</button>
       <button id="hist-dl-history-btn" class="hdr-btn" title="Download history JSON">⬇ History</button>
       <button id="hist-dl-cache-btn" class="hdr-btn" title="Download full property cache">⬇ Cache</button>
+      <button id="hist-clear-history-btn" class="hdr-btn stop-btn" title="Clear stored history">🧹 Clean history</button>
       <span id="hist-status" style="font-size:11px;color:var(--muted);font-family:var(--mono);"></span>
     </div>
     <div id="hist-chart-wrap" style="flex:1;overflow:hidden;padding:16px;display:flex;flex-direction:column;">
@@ -2820,24 +2821,69 @@ setInterval(fetchDevices, 10000);
     if(f==='custom'){const a=$('hist-from')?.value,b=$('hist-to')?.value; if(a)from=new Date(a).getTime(); if(b)to=new Date(b).getTime();}
     return d.filter(s=>{const t=ts(s); return t&&t>=from&&t<=to;});
   }
+  function buildAlignedSeries(selected, data){
+    return selected.map(m=>{
+      const points=data.map(s=>({ts:ts(s),v:val(s,m.id)})).filter(p=>p.ts&&p.v!==null);
+      if(!points.length) return null;
+      const start=points[0].v;
+      let maxDev=Math.max(...points.map(p=>Math.abs(p.v-start)));
+      if(!Number.isFinite(maxDev)||maxDev===0) maxDev=Math.max(1, Math.abs(start)*0.01);
+      return {...m,points,start,min:start-maxDev,max:start+maxDev,maxDev};
+    }).filter(Boolean);
+  }
   window.renderHistChart=function(){
-    const c=$('hist-canvas'), empty=$('hist-empty'); if(!c||!empty)return; const m=metrics(), d=dataFiltered();
+    const c=$('hist-canvas'), empty=$('hist-empty'); if(!c||!empty)return;
+    const m=metrics(), d=dataFiltered();
     if(!m.length){empty.textContent='Select at least one metric'; empty.style.display=''; c.style.display='none'; msg('No metric selected'); return;}
-    const series=m.map(x=>({...x,points:d.map(s=>({ts:ts(s),v:val(s,x.id)})).filter(p=>p.ts&&p.v!==null)})).filter(x=>x.points.length);
+    const series=buildAlignedSeries(m,d);
     if(!d.length||!series.length){empty.textContent=!d.length?'No history in selected time range':'Selected metrics have no values in this range'; empty.style.display=''; c.style.display='none'; msg(`${d.length} filtered snapshots · ${m.length} metric(s) selected`); return;}
-    empty.style.display='none'; c.style.display=''; const r=c.getBoundingClientRect(),dpr=window.devicePixelRatio||1,W=Math.max(320,Math.floor(r.width||c.offsetWidth||800)),H=Math.max(300,Math.floor(r.height||c.offsetHeight||360)); c.width=W*dpr;c.height=H*dpr; const ctx=c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
-    const vals=series.flatMap(s=>s.points.map(p=>p.v)), times=series.flatMap(s=>s.points.map(p=>p.ts)); let minV=Math.min(...vals),maxV=Math.max(...vals); if(minV===maxV){minV-=1;maxV+=1;} const minT=Math.min(...times),maxT=Math.max(...times),tr=(maxT-minT)||1;
-    const pad={l:58,r:18,t:22,b:58},cw=W-pad.l-pad.r,ch=H-pad.t-pad.b,x=t=>pad.l+((t-minT)/tr)*cw,y=v=>pad.t+(1-(v-minV)/(maxV-minV))*ch,colors=['#00c8d4','#00d48a','#ffb830','#a078f0','#ff7a30','#8ab4d0','#ff4d6a','#fff','#c0ff60','#60a0ff'];
-    ctx.font='10px monospace'; ctx.strokeStyle='rgba(255,255,255,.09)'; ctx.fillStyle='rgba(255,255,255,.45)'; for(let i=0;i<=4;i++){const yy=pad.t+ch*i/4;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(W-pad.r,yy);ctx.stroke();ctx.textAlign='right';ctx.fillText((maxV-(maxV-minV)*i/4).toFixed(1),pad.l-7,yy+4);}
-    series.forEach((s,i)=>{const col=colors[i%colors.length];ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=2;ctx.beginPath();s.points.forEach((p,j)=>{const xx=x(p.ts),yy=y(p.v);j?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy);});ctx.stroke();const last=s.points[s.points.length-1];ctx.beginPath();ctx.arc(x(last.ts),y(last.v),4,0,Math.PI*2);ctx.fill();});
-    ctx.fillStyle='rgba(255,255,255,.45)';ctx.textAlign='center';[minT,minT+tr/2,maxT].forEach(t=>ctx.fillText(new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),x(t),H-10));
-    let lx=pad.l,ly=H-38;ctx.textAlign='left';series.forEach((s,i)=>{const col=colors[i%colors.length],label=s.label.replace(/^[^a-zA-Z0-9]+\s*/,'').slice(0,24),w=ctx.measureText(label).width+30;if(lx+w>W-pad.r){lx=pad.l;ly+=14;}ctx.fillStyle=col;ctx.fillRect(lx,ly-8,12,3);ctx.fillText(label,lx+17,ly-4);lx+=w;}); msg(`${d.length} filtered snapshots · ${series.length}/${m.length} metrics shown`);
+    empty.style.display='none'; c.style.display='';
+    const r=c.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+    const W=Math.max(360,Math.floor(r.width||c.offsetWidth||900));
+    const H=Math.max(320,Math.floor(r.height||c.offsetHeight||420));
+    c.width=W*dpr; c.height=H*dpr;
+    const ctx=c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+    const times=series.flatMap(s=>s.points.map(p=>p.ts));
+    const minT=Math.min(...times), maxT=Math.max(...times), tr=(maxT-minT)||1;
+    const axisGap=42;
+    const rightAxes=Math.min(series.length, 4);
+    const pad={l:56,r:24+(rightAxes*axisGap),t:24,b:68};
+    const cw=Math.max(20,W-pad.l-pad.r), ch=Math.max(20,H-pad.t-pad.b);
+    const x=t=>pad.l+((t-minT)/tr)*cw;
+    const y=(v,s)=>pad.t+(1-((v-s.min)/(s.max-s.min)))*ch;
+    const yStart=pad.t+ch/2;
+    const colors=['#00c8d4','#00d48a','#ffb830','#a078f0','#ff7a30','#8ab4d0','#ff4d6a','#fff','#c0ff60','#60a0ff','#ff80d0','#80ffd8'];
+    ctx.font='10px monospace';
+    ctx.strokeStyle='rgba(255,255,255,.08)'; ctx.lineWidth=1;
+    for(let i=0;i<=4;i++){const yy=pad.t+ch*i/4;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(pad.l+cw,yy);ctx.stroke();}
+    ctx.strokeStyle='rgba(255,255,255,.22)'; ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(pad.l,yStart);ctx.lineTo(pad.l+cw,yStart);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='rgba(255,255,255,.45)'; ctx.textAlign='right';ctx.fillText('start aligned', pad.l-7, yStart+4);
+    series.forEach((s,i)=>{const col=colors[i%colors.length];ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=2;ctx.beginPath();s.points.forEach((p,j)=>{const xx=x(p.ts), yy=y(p.v,s); j?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy);});ctx.stroke();const first=s.points[0], last=s.points[s.points.length-1];ctx.beginPath();ctx.arc(x(first.ts),yStart,3,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(x(last.ts),y(last.v,s),4,0,Math.PI*2);ctx.fill();ctx.font='bold 10px monospace';ctx.textAlign='left';ctx.fillText(String(Number(last.v).toFixed(1)), Math.min(x(last.ts)+6, pad.l+cw-38), y(last.v,s)-6);});
+    ctx.font='9px monospace';
+    series.slice(0,4).forEach((s,i)=>{const col=colors[i%colors.length]; const ax=pad.l+cw+14+i*axisGap;ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(ax,pad.t);ctx.lineTo(ax,pad.t+ch);ctx.stroke();[[s.max,pad.t],[s.start,yStart],[s.min,pad.t+ch]].forEach(([v,yy])=>{ctx.beginPath();ctx.moveTo(ax-4,yy);ctx.lineTo(ax+4,yy);ctx.stroke();ctx.textAlign='left';ctx.fillText(Number(v).toFixed(1),ax+6,yy+3);});});
+    if(series.length>4){ctx.fillStyle='rgba(255,255,255,.45)';ctx.textAlign='left';ctx.fillText(`+${series.length-4} axes hidden`, pad.l+cw+14, pad.t+ch+14);}
+    ctx.fillStyle='rgba(255,255,255,.45)';ctx.textAlign='center';ctx.font='10px monospace';[minT,minT+tr/2,maxT].forEach(t=>ctx.fillText(new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),x(t),H-12));
+    let lx=pad.l,ly=H-48;ctx.textAlign='left';ctx.font='10px monospace';
+    series.forEach((s,i)=>{const col=colors[i%colors.length];const clean=s.label.replace(/^[^a-zA-Z0-9]+\s*/,'').slice(0,18);const last=s.points[s.points.length-1].v;const delta=last-s.start;const label=`${clean} · start ${s.start.toFixed(1)} · Δ ${delta>=0?'+':''}${delta.toFixed(1)}`;const w=Math.min(ctx.measureText(label).width+32, W-pad.r-pad.l);if(lx+w>W-pad.r){lx=pad.l;ly+=14;}ctx.fillStyle=col;ctx.fillRect(lx,ly-8,12,3);ctx.fillText(label,lx+17,ly-4);lx+=w;});
+    msg(`${d.length} filtered snapshots · ${series.length}/${m.length} metrics shown · start values aligned · private Y-axis per metric`);
   };
   window.forceRenderHistChart=()=>{setTimeout(window.renderHistChart,0);requestAnimationFrame(window.renderHistChart);};
   window.loadHistory=async()=>{msg('⟳ Loading history…');try{const r=await fetch(`${SERVER}/history?t=${Date.now()}`,{cache:'no-store'});const j=await r.json();window.histData=histData=Array.isArray(j.history)?j.history:[];msg(`${histData.length} snapshots loaded`);window.renderHistChart();}catch(e){msg('✗ history load failed: '+e.message);}};
   function blobSave(b,n){const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=n;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);a.remove();},1000);}
   async function dl(ep,name,fallback){try{msg('⟳ Downloading '+name+'…');const r=await fetch(`${SERVER}${ep}?t=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const b=await r.blob();if(!b.size)throw new Error('empty file');blobSave(b,name);msg('✓ Downloaded '+name);}catch(e){try{const x=typeof fallback==='function'?await fallback():fallback;blobSave(new Blob([JSON.stringify(x||{},null,2)],{type:'application/json'}),name);msg('✓ Downloaded '+name+' from fallback');}catch(e2){msg('✗ Download failed: '+e.message);alert('Download failed: '+e.message);}}}
-  function bind(){const ml=$('hist-metric-list'); if(ml&&!ml.dataset.hardfix){ml.dataset.hardfix='1';ml.addEventListener('change',window.forceRenderHistChart,true);ml.addEventListener('click',()=>setTimeout(window.forceRenderHistChart,0),true);} const f=$('hist-time-filter'); if(f)f.onchange=()=>{const show=f.value==='custom'; if($('hist-from'))$('hist-from').style.display=show?'':'none'; if($('hist-to'))$('hist-to').style.display=show?'':'none'; window.forceRenderHistChart();}; if($('hist-from'))$('hist-from').onchange=window.forceRenderHistChart; if($('hist-to'))$('hist-to').onchange=window.forceRenderHistChart; if($('hist-refresh-btn'))$('hist-refresh-btn').onclick=window.loadHistory; if($('hist-select-all-btn'))$('hist-select-all-btn').onclick=()=>{document.querySelectorAll('#hist-metric-list input[type="checkbox"]').forEach(b=>b.checked=true);window.forceRenderHistChart();}; if($('hist-clear-metrics-btn'))$('hist-clear-metrics-btn').onclick=()=>{document.querySelectorAll('#hist-metric-list input[type="checkbox"]').forEach(b=>b.checked=false);window.forceRenderHistChart();}; if($('hist-dl-history-btn'))$('hist-dl-history-btn').onclick=()=>dl('/download/history','car_props_history.json',()=>histData||[]); if($('hist-dl-cache-btn'))$('hist-dl-cache-btn').onclick=async()=>dl('/download/cache','car_props_cache.json',async()=>{const r=await fetch(`${SERVER}/properties?t=${Date.now()}`,{cache:'no-store'});const j=await r.json();return j.properties||j;});}
+  async function clearHistory(){if(!confirm('Clean all stored history? Cache/latest values will be kept.')) return;try{msg('⟳ Cleaning history…');let r=await fetch(`${SERVER}/history/clear`,{method:'POST',cache:'no-store'});if(!r.ok) throw new Error('HTTP '+r.status);let j={}; try{j=await r.json();}catch{}window.histData=histData=[];msg(`✓ History cleaned${j.removed!==undefined?` (${j.removed} entries removed)`:''}`);window.renderHistChart();}catch(e){msg('✗ Clean history failed: '+e.message);alert('Clean history failed: '+e.message);}}
+  function bind(){
+    const ml=$('hist-metric-list'); if(ml&&!ml.dataset.hardfix){ml.dataset.hardfix='1';ml.addEventListener('change',window.forceRenderHistChart,true);ml.addEventListener('click',()=>setTimeout(window.forceRenderHistChart,0),true);}
+    const f=$('hist-time-filter'); if(f)f.onchange=()=>{const show=f.value==='custom'; if($('hist-from'))$('hist-from').style.display=show?'':'none'; if($('hist-to'))$('hist-to').style.display=show?'':'none'; window.forceRenderHistChart();};
+    if($('hist-from'))$('hist-from').onchange=window.forceRenderHistChart;
+    if($('hist-to'))$('hist-to').onchange=window.forceRenderHistChart;
+    if($('hist-refresh-btn'))$('hist-refresh-btn').onclick=window.loadHistory;
+    if($('hist-select-all-btn'))$('hist-select-all-btn').onclick=()=>{document.querySelectorAll('#hist-metric-list input[type="checkbox"]').forEach(b=>b.checked=true);window.forceRenderHistChart();};
+    if($('hist-clear-metrics-btn'))$('hist-clear-metrics-btn').onclick=()=>{document.querySelectorAll('#hist-metric-list input[type="checkbox"]').forEach(b=>b.checked=false);window.forceRenderHistChart();};
+    if($('hist-dl-history-btn'))$('hist-dl-history-btn').onclick=()=>dl('/download/history','car_props_history.json',()=>histData||[]);
+    if($('hist-dl-cache-btn'))$('hist-dl-cache-btn').onclick=async()=>dl('/download/cache','car_props_cache.json',async()=>{const r=await fetch(`${SERVER}/properties?t=${Date.now()}`,{cache:'no-store'});const j=await r.json();return j.properties||j;});
+    if($('hist-clear-history-btn'))$('hist-clear-history-btn').onclick=clearHistory;
+  }
   document.addEventListener('DOMContentLoaded',bind); bind();
 })();
 </script>
