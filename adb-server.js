@@ -31,6 +31,7 @@ const HISTORY_MAX_ROWS = 20_000;
 
 // ── ABRP OAuth / token storage ──
 const ABRP_CLIENT_ID  = "SEALION 7 PILOT";
+const ABRP_REDIRECT_URI = "https://aliboumrah.github.io/Sealion7Store/";
 const ABRP_TOKEN_FILE = path.join(__dirname, "abrp_token.json");
 let ABRP_TOKEN = "";
 let ABRP_USER  = null;
@@ -88,9 +89,9 @@ function getPublicBaseUrl(req) {
 }
 
 function buildAbrpAuthUrl(req) {
-  const redirectUri = getPublicBaseUrl(req) + "/oauth/callback";
+  const redirectUri = ABRP_REDIRECT_URI;
   const state = Date.now().toString(36) + Math.random().toString(36).slice(2);
-  const scope = "get_telemetry set_telemetry get_plan";
+  const scope = "get_plan set_telemetry";
   ABRP_OAUTH_STATE = state;
   ABRP_OAUTH_REDIRECT_URI = redirectUri;
   console.log("ABRP OAuth start", { client_id: ABRP_CLIENT_ID, redirect_uri: redirectUri, state });
@@ -715,13 +716,13 @@ const server = http.createServer(async (req, res) => {
   // ── ABRP status / OAuth callback ──
   if (req.method === "GET" && pathname === "/abrp/status") {
     if (ABRP_TOKEN && !ABRP_USER) await fetchAbrpUserInfo(ABRP_TOKEN);
-    const redirectUri = getPublicBaseUrl(req) + "/oauth/callback";
+    const redirectUri = ABRP_REDIRECT_URI;
     res.writeHead(200);
     res.end(JSON.stringify({
       connected: !!ABRP_TOKEN,
       client_id: ABRP_CLIENT_ID,
       redirect_uri: redirectUri,
-      auth_start_url: getPublicBaseUrl(req) + "/oauth/start",
+      auth_start_url: "/oauth/start",
       user: ABRP_USER || null,
       vehicle_name: ABRP_USER?.vehicle_name || "",
       vehicle_typecode: ABRP_USER?.vehicle_typecode || ""
@@ -740,7 +741,7 @@ const server = http.createServer(async (req, res) => {
     const oauthError = parsed.query.error || parsed.query.error_description;
     if (!code) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      const configured = getPublicBaseUrl(req) + "/oauth/callback";
+      const configured = ABRP_REDIRECT_URI;
       const msg = oauthError
         ? "ABRP returned an OAuth error: " + String(oauthError)
         : "No auth_code/code was present in the callback URL. Start login from Settings or use the button below.";
@@ -750,7 +751,7 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const returnedState = parsed.query.state || "";
-      const redirectUri = ABRP_OAUTH_REDIRECT_URI || (getPublicBaseUrl(req) + "/oauth/callback");
+      const redirectUri = ABRP_REDIRECT_URI;
       if (ABRP_OAUTH_STATE && returnedState && returnedState !== ABRP_OAUTH_STATE) {
         throw new Error("OAuth state mismatch. Please start login again from Settings.");
       }
@@ -781,7 +782,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     try {
-      const tokenUrl = "https://api.iternio.com/1/oauth/token?client_id=" + encodeURIComponent(clientId) + "&code=" + encodeURIComponent(code);
+      const tokenUrl = "https://api.iternio.com/1/oauth/token" +
+        "?client_id=" + encodeURIComponent(clientId) +
+        "&code=" + encodeURIComponent(code) +
+        "&redirect_uri=" + encodeURIComponent(ABRP_REDIRECT_URI);
+      console.log("ABRP OAuth exchange via GitHub callback", { client_id: clientId, redirect_uri: ABRP_REDIRECT_URI, has_code: !!code });
       const data = await httpsJsonGet(tokenUrl);
       if (data.access_token) {
         saveAbrpToken(data.access_token);

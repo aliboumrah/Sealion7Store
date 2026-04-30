@@ -1938,8 +1938,8 @@ function abrpSetStatus(message, color = "var(--muted)") {
 }
 
 function abrpGetRedirectUri() {
-  // OAuth callback is handled by the Node server so the token can be persisted server-side.
-  return SERVER.replace(/\/$/, "") + "/oauth/callback";
+  // GitHub Pages is the OAuth callback. It receives auth_code, then forwards it to the car server.
+  return "https://aliboumrah.github.io/Sealion7Store/";
 }
 
 function abrpRenderDisconnected(redirectUri) {
@@ -1977,7 +1977,7 @@ async function abrpRefreshStatus() {
   try {
     const res = await fetch(SERVER + "/abrp/status", { cache: "no-store" });
     const data = await res.json();
-    if (data.redirect_uri && red) red.textContent = data.redirect_uri;
+    if (red) red.textContent = abrpGetRedirectUri();
     if (data.connected) {
       abrpRenderConnected(data);
       return data;
@@ -1997,15 +1997,18 @@ async function abrpHandleReturnedAuthCode() {
   const params = new URLSearchParams(window.location.search);
   const authCode = params.get("auth_code") || params.get("code");
   if (!authCode) return false;
+
   abrpSetStatus("⟳ Exchanging ABRP auth code…", "var(--accent)");
   try {
-    const res = await fetch(SERVER + "/abrp-oauth-token?auth_code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(ABRP_CLIENT_ID));
+    const res = await fetch(SERVER + "/abrp-oauth-token?auth_code=" + encodeURIComponent(authCode));
     const data = await res.json();
     if (!data.access_token) throw new Error(data.error || JSON.stringify(data));
+
     abrpToken = data.access_token;
     localStorage.setItem("abrpToken", abrpToken);
     const tokenInput = document.getElementById("abrp-token");
     if (tokenInput) tokenInput.value = abrpToken;
+
     window.history.replaceState({}, "", window.location.pathname);
     await abrpRefreshStatus();
     return true;
@@ -2016,8 +2019,13 @@ async function abrpHandleReturnedAuthCode() {
 }
 
 function abrpStartOAuthLogin() {
-  // Let the Node server build the ABRP OAuth URL. This avoids mismatched redirect_uri values.
-  window.location.href = SERVER.replace(/\/$/, "") + "/oauth/start";
+  const redirect = abrpGetRedirectUri();
+  const url = "https://abetterrouteplanner.com/oauth/auth" +
+    "?client_id=" + encodeURIComponent(ABRP_CLIENT_ID) +
+    "&scope=" + encodeURIComponent("get_plan set_telemetry") +
+    "&response_type=code" +
+    "&redirect_uri=" + encodeURIComponent(redirect);
+  window.location.href = url;
 }
 
 document.getElementById("abrp-oauth-btn")?.addEventListener("click", abrpStartOAuthLogin);
