@@ -49,12 +49,16 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 
 # ── Auto-register in .bashrc (first run only) ──
-if ! grep -qF "$AUTOSTART_MARKER" "$BASHRC" 2>/dev/null; then
+echo -e "${BLUE}[0/5]${NC} Checking autostart registration..."
+if grep -qF "$AUTOSTART_MARKER" "$BASHRC" 2>/dev/null; then
+  echo -e "      ${GREEN}✓ Already registered in ~/.bashrc${NC}"
+else
   echo "" >> "$BASHRC"
   echo "$AUTOSTART_MARKER" >> "$BASHRC"
   echo 'bash ~/start.sh' >> "$BASHRC"
   echo "$AUTOSTART_MARKER" >> "$BASHRC"
-  echo -e "${GREEN}✓ Auto-start registered in ~/.bashrc${NC}"
+  echo -e "      ${GREEN}✓ Successfully registered in ~/.bashrc${NC}"
+  echo -e "      ${YELLOW}→ Script will auto-start on next Termux launch${NC}"
 fi
 
 # ── Step 1: Update & upgrade ──
