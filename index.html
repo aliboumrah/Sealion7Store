@@ -581,6 +581,20 @@ body.history-active #metrics-panel { display:flex; }
 
       <!-- OAuth login button -->
       <div id="abrp-login-section">
+        <div class="apk-section-title" style="margin-bottom:6px;">OAuth Settings</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+          <input id="abrp-client-id" type="text" placeholder="ABRP client_id"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;"/>
+          <input id="abrp-api-key" type="password" placeholder="ABRP API key / client_secret"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;"/>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <button id="abrp-save-oauth-btn" class="hdr-btn" style="flex:1;">Save OAuth Settings</button>
+          <button id="abrp-clear-oauth-btn" class="hdr-btn" style="flex:1;color:var(--yellow);">Clear OAuth Settings</button>
+        </div>
+        <div class="tip-box" style="margin-top:0;margin-bottom:10px;">
+          <strong>Redirect URI:</strong> register exactly this URL in ABRP: <code id="abrp-redirect-preview"></code>
+        </div>
         <button id="abrp-oauth-btn" class="install-btn" style="width:100%;justify-content:center;display:flex;align-items:center;gap:8px;margin-bottom:10px;">
           🔐 Login with ABRP Account
         </button>
@@ -1923,73 +1937,106 @@ document.getElementById("cs-restart-btn").addEventListener("click", async () => 
 
 
 
-// ── ABRP tab ──
+// ── ABRP settings/OAuth ──
 let abrpToken = localStorage.getItem("abrpToken") || "";
 let abrpInterval = null;
 let abrpRunning  = false;
 
 const ABRP_AUTH_URL  = "https://abetterrouteplanner.com/oauth/auth";
-const ABRP_REDIRECT  = window.location.href.split("?")[0];
+const ABRP_REDIRECT  = window.location.origin + window.location.pathname;
 
-// Pre-fill token
+function abrpLoadOAuthSettings() {
+  const cid = document.getElementById("abrp-client-id");
+  const key = document.getElementById("abrp-api-key");
+  const red = document.getElementById("abrp-redirect-preview");
+  if (cid) cid.value = localStorage.getItem("abrpClientId") || "";
+  if (key) key.value = localStorage.getItem("abrpApiKey") || "";
+  if (red) red.textContent = ABRP_REDIRECT;
+}
+function abrpSaveOAuthSettings() {
+  const cid = (document.getElementById("abrp-client-id")?.value || "").trim();
+  const key = (document.getElementById("abrp-api-key")?.value || "").trim();
+  if (cid) localStorage.setItem("abrpClientId", cid); else localStorage.removeItem("abrpClientId");
+  if (key) localStorage.setItem("abrpApiKey", key); else localStorage.removeItem("abrpApiKey");
+  const st = document.getElementById("abrp-status");
+  if (st) st.innerHTML = '<span style="color:var(--green);">✓ OAuth settings saved</span>';
+}
+function abrpClearOAuthSettings() {
+  localStorage.removeItem("abrpClientId");
+  localStorage.removeItem("abrpApiKey");
+  abrpLoadOAuthSettings();
+  const st = document.getElementById("abrp-status");
+  if (st) st.textContent = "OAuth settings cleared.";
+}
+abrpLoadOAuthSettings();
+
 if (abrpToken) {
   const inp = document.getElementById("abrp-token");
   if (inp) inp.value = abrpToken;
 }
 
-// ── Check for OAuth callback (auth_code in URL) ──
 (async () => {
-  const params   = new URLSearchParams(window.location.search);
-  const authCode = params.get("auth_code");
+  const params = new URLSearchParams(window.location.search);
+  const authCode = params.get("auth_code") || params.get("code");
+  const returnedState = params.get("state") || "";
   if (authCode) {
     const statusEl = document.getElementById("abrp-status");
     statusEl.textContent = "⟳ Exchanging auth code for token…";
     try {
+      const expectedState = localStorage.getItem("abrpOAuthState") || "";
+      if (expectedState && returnedState && expectedState !== returnedState) throw new Error("OAuth state mismatch");
       const clientId = localStorage.getItem("abrpClientId") || "";
-      const res  = await fetch(`${SERVER}/abrp-oauth-token?code=${encodeURIComponent(authCode)}&client_id=${encodeURIComponent(clientId)}`);
+      const apiKey = localStorage.getItem("abrpApiKey") || "";
+      const res = await fetch(SERVER + "/abrp-oauth-token?auth_code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(clientId) + "&client_secret=" + encodeURIComponent(apiKey));
       const data = await res.json();
       if (data.access_token) {
         abrpToken = data.access_token;
         localStorage.setItem("abrpToken", abrpToken);
         document.getElementById("abrp-token").value = abrpToken;
         window.history.replaceState({}, "", window.location.pathname);
-        statusEl.innerHTML = `<span style="color:var(--green);">✓ Logged in!</span>`;
+        statusEl.innerHTML = '<span style="color:var(--green);">✓ Logged in!</span>';
         await abrpFetchUserInfo();
       } else {
-        statusEl.innerHTML = `<span style="color:var(--red);">✗ OAuth failed: ${JSON.stringify(data)}</span>`;
+        statusEl.innerHTML = '<span style="color:var(--red);">✗ OAuth failed: ' + JSON.stringify(data) + '</span>';
       }
     } catch(e) {
-      document.getElementById("abrp-status").innerHTML = `<span style="color:var(--red);">✗ ${e.message}</span>`;
+      document.getElementById("abrp-status").innerHTML = '<span style="color:var(--red);">✗ ' + e.message + '</span>';
     }
   } else if (abrpToken) {
     await abrpFetchUserInfo();
   }
 })();
 
-// ── Fetch user info ──
 async function abrpFetchUserInfo() {
   try {
-    const res  = await fetch(`${SERVER}/abrp-oauth-me?token=${encodeURIComponent(abrpToken)}`);
+    const apiKey = localStorage.getItem("abrpApiKey") || "";
+    const res = await fetch(SERVER + "/abrp-oauth-me?token=" + encodeURIComponent(abrpToken) + "&api_key=" + encodeURIComponent(apiKey));
     const data = await res.json();
     if (data.user_id) {
-      document.getElementById("abrp-user-info").style.display    = "flex";
+      document.getElementById("abrp-user-info").style.display = "flex";
       document.getElementById("abrp-login-section").style.display = "none";
-      document.getElementById("abrp-user-name").textContent      = data.full_name || "ABRP User";
-      document.getElementById("abrp-user-email").textContent     = data.email || "";
-      document.getElementById("abrp-vehicle-name").textContent   = data.vehicle_name ? `🚗 ${data.vehicle_name}` : "";
+      document.getElementById("abrp-user-name").textContent = data.full_name || "ABRP User";
+      document.getElementById("abrp-user-email").textContent = data.email || "";
+      document.getElementById("abrp-vehicle-name").textContent = data.vehicle_name ? "🚗 " + data.vehicle_name : "";
     }
-  } catch(e) { /* manual token — no user info */ }
+  } catch(e) {}
 }
 
-// ── OAuth login button ──
+document.getElementById("abrp-save-oauth-btn")?.addEventListener("click", abrpSaveOAuthSettings);
+document.getElementById("abrp-clear-oauth-btn")?.addEventListener("click", abrpClearOAuthSettings);
 document.getElementById("abrp-oauth-btn").addEventListener("click", () => {
-  let clientId = localStorage.getItem("abrpClientId") || "";
-  if (!clientId) {
-    clientId = prompt("Enter your ABRP API Client ID (from iternio.com/api):");
-    if (!clientId) return;
-    localStorage.setItem("abrpClientId", clientId);
+  abrpSaveOAuthSettings();
+  const clientId = localStorage.getItem("abrpClientId") || "";
+  const apiKey = localStorage.getItem("abrpApiKey") || "";
+  if (!clientId || !apiKey) {
+    const st = document.getElementById("abrp-status");
+    if (st) st.innerHTML = '<span style="color:var(--red);">✗ Enter client_id and API key first</span>';
+    return;
   }
-  const authUrl = `${ABRP_AUTH_URL}?client_id=${encodeURIComponent(clientId)}&scope=set_telemetry&response_type=code&redirect_uri=${encodeURIComponent(ABRP_REDIRECT)}`;
+  const state = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+  localStorage.setItem("abrpOAuthState", state);
+  const scope = "get_telemetry set_telemetry get_plan";
+  const authUrl = ABRP_AUTH_URL + "?client_id=" + encodeURIComponent(clientId) + "&scope=" + encodeURIComponent(scope) + "&response_type=code&redirect_uri=" + encodeURIComponent(ABRP_REDIRECT) + "&state=" + encodeURIComponent(state);
   window.location.href = authUrl;
 });
 

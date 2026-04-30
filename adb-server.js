@@ -766,22 +766,27 @@ const server = http.createServer(async (req, res) => {
 
   // ── GET /abrp-oauth-token — exchange auth_code for access_token ──
   if (req.method === "GET" && pathname === "/abrp-oauth-token") {
-    const code      = parsed.query.code;
-    const clientId  = parsed.query.client_id || process.env.ABRP_CLIENT_ID || "";
+    const code = parsed.query.auth_code || parsed.query.code;
+    const clientId = parsed.query.client_id || process.env.ABRP_CLIENT_ID || "";
     const clientSecret = parsed.query.client_secret || process.env.ABRP_API_KEY || "";
     if (!code) {
       res.writeHead(400);
-      res.end(JSON.stringify({ error: "Missing auth code" }));
+      res.end(JSON.stringify({ error: "Missing auth_code" }));
+      return;
+    }
+    if (!clientId || !clientSecret) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: "Missing client_id or client_secret / API key" }));
       return;
     }
     try {
       const https = require("https");
-      const tokenUrl = `https://api.iternio.com/1/oauth/token?client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&code=${encodeURIComponent(code)}`;
+      const tokenUrl = "https://api.iternio.com/1/oauth/token?client_id=" + encodeURIComponent(clientId) + "&client_secret=" + encodeURIComponent(clientSecret) + "&code=" + encodeURIComponent(code);
       const data = await new Promise((resolve, reject) => {
-        https.get(tokenUrl, (r) => {
+        https.get(tokenUrl, { headers: { "User-Agent": "Sealion7-ADB-Shell" } }, (r) => {
           let body = "";
           r.on("data", c => body += c);
-          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
+          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(new Error(body || e.message)); } });
         }).on("error", reject);
       });
       res.writeHead(200);
@@ -795,21 +800,26 @@ const server = http.createServer(async (req, res) => {
 
   // ── GET /abrp-oauth-me — get user info from access_token ──
   if (req.method === "GET" && pathname === "/abrp-oauth-me") {
-    const token  = parsed.query.token;
+    const token = parsed.query.token;
     const apiKey = parsed.query.api_key || process.env.ABRP_API_KEY || "";
     if (!token) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: "Missing token" }));
       return;
     }
+    if (!apiKey) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: "Missing api_key" }));
+      return;
+    }
     try {
       const https = require("https");
-      const meUrl = `https://api.iternio.com/1/oauth/me?access_token=${encodeURIComponent(token)}&api_key=${encodeURIComponent(apiKey)}`;
+      const meUrl = "https://api.iternio.com/1/oauth/me?access_token=" + encodeURIComponent(token) + "&api_key=" + encodeURIComponent(apiKey);
       const data = await new Promise((resolve, reject) => {
-        https.get(meUrl, (r) => {
+        https.get(meUrl, { headers: { "User-Agent": "Sealion7-ADB-Shell" } }, (r) => {
           let body = "";
           r.on("data", c => body += c);
-          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
+          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(new Error(body || e.message)); } });
         }).on("error", reject);
       });
       res.writeHead(200);
@@ -817,121 +827,6 @@ const server = http.createServer(async (req, res) => {
     } catch(e) {
       res.writeHead(200);
       res.end(JSON.stringify({ error: e.message }));
-    }
-    return;
-  }
-
-  // ── GET /ssh-info — return SSH connection details ──
-  if (req.method === "GET" && pathname === "/ssh-info") {
-    const { execSync } = require("child_process");
-    let ip = "";
-    try {
-      ip = execSync("ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 | head -1").toString().trim();
-      if (!ip) ip = execSync("ip addr show 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | cut -d/ -f1 | head -1").toString().trim();
-    } catch(e) {}
-    const sshRunning = (() => { try { execSync("pgrep -x sshd"); return true; } catch { return false; } })();
-    res.writeHead(200);
-    res.end(JSON.stringify({ ip, sshRunning, sshPort: 8022, user: process.env.USER || "u0_a" }));
-    return;
-  }
-
-  // ── POST /ssh-setup — install and start SSH ──
-  if (req.method === "POST" && pathname === "/ssh-setup") {
-    const steps = [];
-    const run = (cmd) => runShell(cmd);
-    const r1 = await run("pkg install openssh -y");
-    steps.push({ cmd: "install openssh", ok: r1.success });
-    const r2 = await run("[ -f ~/.ssh/id_rsa ] || ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa -N ''");
-    steps.push({ cmd: "generate keys", ok: r2.success });
-    const r3 = await run("pgrep -x sshd || sshd");
-    steps.push({ cmd: "start sshd", ok: r3.success });
-    // Get SSH info
-    const { execSync } = require("child_process");
-    let ip = "";
-    try { ip = execSync("ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1").toString().trim(); } catch {}
-    res.writeHead(200);
-    res.end(JSON.stringify({ success: true, steps, ip, port: 8022 }));
-    return;
-  }
-
-  // ── GET /navigate — server-side Nominatim search (avoids CORS) ──
-  if (req.method === "GET" && pathname === "/navigate") {
-    const q = parsed.query && parsed.query.q;
-    if (!q) { res.writeHead(400); res.end(JSON.stringify({ error: "Missing q" })); return; }
-    try {
-      const https = require("https");
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&addressdetails=1`;
-      const data = await new Promise((resolve, reject) => {
-        https.get(url, { headers: { "User-Agent": "Sealion7-ADB-Shell", "Accept-Language": "en" } }, (r) => {
-          let body = "";
-          r.on("data", c => body += c);
-          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
-        }).on("error", reject);
-      });
-      res.writeHead(200);
-      res.end(JSON.stringify({ places: data }));
-    } catch(e) {
-      res.writeHead(200);
-      res.end(JSON.stringify({ places: [], error: e.message }));
-    }
-    return;
-  }
-
-  // ── GET /download/cache — download latest cached car property values ──
-  if (req.method === "GET" && pathname === "/download/cache") {
-    sendJsonFileDownload(res, CACHE_FILE, carPropsCache || {}, "car_props_cache.json");
-    return;
-  }
-
-  // ── GET /download/history — download changed car property snapshots ──
-  if (req.method === "GET" && pathname === "/download/history") {
-    sendJsonFileDownload(res, HISTORY_FILE, carPropsHistory || [], "car_props_history.json");
-    return;
-  }
-
-
-  // ── POST/GET /history/clear — clear stored history, keep latest cache ──
-  if ((req.method === "POST" || req.method === "GET") && pathname === "/history/clear") {
-    const removed = Array.isArray(carPropsHistory) ? carPropsHistory.length : 0;
-    carPropsHistory = [];
-    try {
-      fs.writeFileSync(HISTORY_FILE, "[]\n");
-      res.writeHead(200);
-      res.end(JSON.stringify({ success: true, removed, history: [], count: 0 }));
-    } catch(e) {
-      res.writeHead(500);
-      res.end(JSON.stringify({ success: false, error: e.message }));
-    }
-    return;
-  }
-
-  // ── GET /history — return reconstructed full snapshots for the UI chart ──
-  if (req.method === "GET" && pathname === "/history") {
-    try {
-      const rawHistory = fs.existsSync(HISTORY_FILE)
-        ? normalizeHistory(JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")))
-        : carPropsHistory;
-      const history = reconstructHistorySnapshots(rawHistory);
-      res.writeHead(200);
-      res.end(JSON.stringify({ success: true, history, count: history.length, rawCount: rawHistory.length, storage: "delta" }));
-    } catch(e) {
-      res.writeHead(200);
-      res.end(JSON.stringify({ success: false, history: [], error: e.message }));
-    }
-    return;
-  }
-
-  // ── GET /history/raw — return compact delta/full records exactly as stored ──
-  if (req.method === "GET" && pathname === "/history/raw") {
-    try {
-      const rawHistory = fs.existsSync(HISTORY_FILE)
-        ? normalizeHistory(JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")))
-        : carPropsHistory;
-      res.writeHead(200);
-      res.end(JSON.stringify({ success: true, history: rawHistory, count: rawHistory.length, storage: "delta" }));
-    } catch(e) {
-      res.writeHead(200);
-      res.end(JSON.stringify({ success: false, history: [], error: e.message }));
     }
     return;
   }
