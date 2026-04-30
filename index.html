@@ -1077,19 +1077,19 @@ async function fetchDevices() {
   const serverOk = await checkServer();
   if (!serverOk) {
     deviceSel.innerHTML = `<option value="">— server offline —</option>`;
-    adbDot.className    = "status-dot";
-    adbLabel.textContent = "ADB unknown";
-    adbReady = false;
-    updateInstallBlocking();
     return;
   }
+
+  // Check ADB directly via "adb devices" command
+  await checkAdbDirect();
+
+  // Also populate device selector via server
   try {
     const res  = await fetch(`${SERVER}/devices`);
     const data = await res.json();
     deviceSel.innerHTML = "";
     if (!data.devices || !data.devices.length) {
       deviceSel.innerHTML = `<option value="">— no device —</option>`;
-      await checkAdb([]);
       return;
     }
     data.devices.forEach(d => {
@@ -1098,10 +1098,8 @@ async function fetchDevices() {
       o.textContent = `${d.model} (${d.serial})`;
       deviceSel.appendChild(o);
     });
-    await checkAdb(data.devices);
   } catch {
     deviceSel.innerHTML = `<option value="">— error —</option>`;
-    await checkAdb([]);
   }
 }
 
