@@ -983,18 +983,43 @@ body.history-active #metrics-panel { display:flex; }
         // 2. Clean code from URL
         window.history.replaceState({}, document.title, window.location.pathname);
 
-        // 3. Fill the token input + trigger save once DOM is ready
+        // 3. Apply token to app state + save to backend + update UI
         function applyToken() {
+          // Update the in-memory variable the app uses
+          if (typeof abrpToken !== 'undefined') abrpToken = token;
+
+          // Fill the input field
           const input = document.getElementById('abrp-token');
-          const saveBtn = document.getElementById('abrp-save-btn');
           if (input) input.value = token;
-          if (saveBtn) saveBtn.click(); // auto-save to backend too
+
+          // Save to backend directly (same logic as the Save button)
+          const SERVER_URL = (localStorage.getItem('serverUrl') || 'http://192.168.1.20:3000').replace(/\/$/, '');
+          fetch(SERVER_URL + '/abrp-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token })
+          })
+            .then(r => r.json())
+            .then(() => {
+              console.log('✅ Token saved to backend');
+              // Switch to settings tab so user sees the connected state
+              if (typeof window.switchTab === 'function') window.switchTab('settings');
+              // Refresh ABRP status UI
+              if (typeof window.abrpRefreshStatus === 'function') window.abrpRefreshStatus();
+            })
+            .catch(() => {
+              // Backend offline — still update UI from localStorage
+              console.warn('⚠️ Backend offline, token saved locally only');
+              if (typeof window.switchTab === 'function') window.switchTab('settings');
+              if (typeof window.abrpRefreshStatus === 'function') window.abrpRefreshStatus();
+            });
         }
 
         if (document.readyState === 'loading') {
           document.addEventListener('DOMContentLoaded', applyToken);
         } else {
-          applyToken();
+          // DOM ready but other scripts may not be — wait one tick
+          setTimeout(applyToken, 300);
         }
       })
       .catch(err => {
