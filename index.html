@@ -418,6 +418,10 @@
   #metrics-panel { display:none; }
 body.history-active #metrics-panel { display:flex; }
 @media(max-width:640px){ .history-panel{display:none!important;} }
+
+/* ── Tesla-style AI Route Assistant ── */
+.tesla-nav-pane{background:radial-gradient(circle at 50% -10%,rgba(0,200,212,.08),transparent 45%),#070b0f!important}.tesla-nav-shell{flex:1;overflow-y:auto;padding:28px;display:flex;flex-direction:column;gap:18px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}.tesla-nav-hero{display:flex;justify-content:space-between;align-items:stretch;gap:18px;padding:26px;border:1px solid rgba(255,255,255,.08);border-radius:28px;background:linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.025));box-shadow:0 22px 70px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.06)}.tesla-nav-kicker{color:var(--accent);font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700}.tesla-nav-title{color:#f3f7fb;font-size:34px;font-weight:700;letter-spacing:-.04em;margin-top:5px}.tesla-nav-subtitle{color:#7e91a7;font-size:13px;margin-top:7px}.tesla-nav-live{display:grid;grid-template-columns:repeat(3,minmax(90px,1fr));gap:10px;min-width:330px}.tesla-nav-live div{border:1px solid rgba(255,255,255,.07);background:rgba(0,0,0,.22);border-radius:20px;padding:14px}.tesla-nav-live span{display:block;color:#71849a;font-size:10px;text-transform:uppercase;letter-spacing:.12em}.tesla-nav-live b{display:block;color:#fff;font-size:20px;margin-top:7px;font-family:var(--mono)}.tesla-nav-card{border:1px solid rgba(255,255,255,.08);border-radius:24px;background:rgba(255,255,255,.045);padding:14px;box-shadow:0 16px 50px rgba(0,0,0,.28)}.tesla-nav-inputline{display:flex;align-items:center;gap:10px}.tesla-nav-lang,#nav-text-input{background:rgba(5,10,16,.9);border:1px solid rgba(255,255,255,.09);color:#eef7ff;border-radius:16px;outline:none;font-size:13px}.tesla-nav-lang{padding:13px 12px;max-width:128px}#nav-text-input{flex:1;padding:15px 16px;font-size:16px}#nav-text-input:focus,.tesla-nav-lang:focus{border-color:rgba(0,200,212,.55);box-shadow:0 0 0 3px rgba(0,200,212,.10)}#nav-mic-btn,#nav-search-btn,.tesla-nav-actions button{border:0;border-radius:16px;padding:14px 18px;font-weight:700;cursor:pointer;transition:transform .15s,opacity .15s,background .15s}#nav-mic-btn{background:rgba(255,255,255,.08);color:#e9f5ff;border:1px solid rgba(255,255,255,.08)}#nav-search-btn,.tesla-nav-actions button:first-child{background:linear-gradient(135deg,#00d4ff,#00ffa8);color:#001014}#nav-mic-btn:hover,#nav-search-btn:hover,.tesla-nav-actions button:hover{transform:translateY(-1px)}.tesla-nav-status{color:#7e91a7;font-size:12px;margin:10px 4px 0;min-height:18px}.tesla-nav-results{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.tesla-place-card{border:1px solid rgba(255,255,255,.08);border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.025));padding:16px;cursor:pointer;display:flex;gap:13px;align-items:flex-start;transition:transform .14s,border-color .14s,background .14s}.tesla-place-card:hover{transform:translateY(-2px);border-color:rgba(0,200,212,.45);background:rgba(0,200,212,.08)}.tesla-place-card.selected{border-color:rgba(0,255,168,.75);box-shadow:0 0 0 3px rgba(0,255,168,.10)}.tesla-place-icon{width:38px;height:38px;border-radius:14px;background:rgba(0,200,212,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0}.tesla-place-name{color:#f6fbff;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tesla-place-address{color:#8496aa;font-size:12px;line-height:1.45;margin-top:4px}.tesla-place-coords{color:#4d647c;font-size:10px;font-family:var(--mono);margin-top:8px}.tesla-nav-selected{border:1px solid rgba(0,255,168,.25);border-radius:24px;background:linear-gradient(135deg,rgba(0,255,168,.10),rgba(0,200,212,.06));padding:18px 20px}.tesla-nav-selected .title{color:#fff;font-size:18px;font-weight:800}.tesla-nav-selected .address{color:#8ea1b7;font-size:12px;margin-top:5px}.tesla-nav-actions{display:grid;grid-template-columns:1.4fr 1fr .7fr;gap:10px}.tesla-nav-actions button:nth-child(2){background:rgba(255,255,255,.08);color:#e8f5ff;border:1px solid rgba(255,255,255,.08)}.tesla-nav-actions button:nth-child(3){background:rgba(255,77,106,.10);color:#ff8da0;border:1px solid rgba(255,77,106,.18)}@media(max-width:760px){.tesla-nav-hero{flex-direction:column}.tesla-nav-live{min-width:0}.tesla-nav-inputline{flex-wrap:wrap}#nav-text-input{min-width:100%;order:3}.tesla-nav-actions{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -604,40 +608,21 @@ body.history-active #metrics-panel { display:flex; }
   </div>
 
   <!-- Navigate pane -->
-  <div id="navigate-pane" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);">
-
-    <!-- Voice + text input bar -->
-    <div id="nav-bar" style="display:flex;flex-direction:column;gap:0;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;">
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;flex-wrap:wrap;">
-        <select id="nav-lang" onchange="navSaveLang()"
-          style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 8px;color:var(--text);font-size:12px;outline:none;cursor:pointer;flex-shrink:0;">
-          <option value="fr-FR">🇫🇷 Français</option>
-          <option value="en-US">🇬🇧 English</option>
-          <option value="ar-MA">🇲🇦 العربية</option>
-          <option value="es-ES">🇪🇸 Español</option>
-          <option value="de-DE">🇩🇪 Deutsch</option>
-          <option value="it-IT">🇮🇹 Italiano</option>
-          <option value="pt-PT">🇵🇹 Português</option>
-          <option value="nl-NL">🇳🇱 Nederlands</option>
-          <option value="zh-CN">🇨🇳 中文</option>
-        </select>
-        <button id="nav-mic-btn"
-          onclick="navMicClick()"
-          style="width:44px;height:44px;border-radius:50%;background:var(--accent-dim);border:2px solid var(--accent);color:var(--accent);font-size:20px;cursor:pointer;flex-shrink:0;transition:all .2s;">🎙</button>
-        <input id="nav-text-input" type="text" placeholder='Ex: Paris, Tour Eiffel, Casablanca…'
-          onkeydown="if(event.key==='Enter') navGo()"
-          style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;"/>
-        <button onclick="navGo()" class="install-btn" style="flex-shrink:0;">Go</button>
-        <button onclick="navClear()" class="hdr-btn">✕</button>
+  <div id="navigate-pane" class="tesla-nav-pane" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);">
+    <div class="tesla-nav-shell">
+      <div class="tesla-nav-hero">
+        <div><div class="tesla-nav-kicker">BYD Sealion 7</div><div class="tesla-nav-title">AI Route Assistant</div><div class="tesla-nav-subtitle">Search, confirm, then send the destination to ABRP or Maps.</div></div>
+        <div class="tesla-nav-live" id="nav-live-summary"><div><span>SOC</span><b id="nav-soc">--%</b></div><div><span>Range</span><b id="nav-range">-- km</b></div><div><span>EV kWh</span><b id="nav-kwh">--</b></div></div>
       </div>
-      <div id="nav-status" style="font-size:11px;color:var(--muted);padding:0 16px 8px;min-height:18px;"></div>
+      <div class="tesla-nav-card"><div class="tesla-nav-inputline">
+        <select id="nav-lang" onchange="navSaveLang()" class="tesla-nav-lang"><option value="fr-FR">Français</option><option value="en-US">English</option><option value="ar-MA">العربية</option><option value="es-ES">Español</option><option value="de-DE">Deutsch</option><option value="it-IT">Italiano</option><option value="pt-PT">Português</option><option value="nl-NL">Nederlands</option><option value="zh-CN">中文</option></select>
+        <input id="nav-text-input" type="text" placeholder="Where do you want to go?" onkeydown="if(event.key==='Enter') navGo()" />
+        <button id="nav-mic-btn" onclick="navMicClick()" title="Voice input">🎙</button><button id="nav-search-btn" onclick="navGo()">Search</button>
+      </div><div id="nav-status" class="tesla-nav-status">Ready</div></div>
+      <div id="nav-selected" class="tesla-nav-selected" style="display:none;"></div>
+      <div id="nav-actions" class="tesla-nav-actions" style="display:none;"><button onclick="navSendSelectedToAbrp()">Send to ABRP</button><button onclick="navOpenSelectedMaps()">Open in Maps</button><button onclick="navClear()">Clear</button></div>
+      <div id="nav-suggestions" class="tesla-nav-results"></div>
     </div>
-
-    <!-- AI response + suggestions -->
-    <div id="nav-content" style="flex:1;overflow-y:auto;padding:16px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;">
-      <div id="nav-suggestions" style="display:flex;flex-direction:column;gap:10px;"></div>
-    </div>
-
   </div>
 
   <!-- History pane -->
@@ -951,6 +936,7 @@ document.querySelectorAll(".tab").forEach(tab => {
     if (t === "carservice" && !csData) loadCarService();
     if (t === "history") loadHistory();
     if (t === "navigate") {
+      setTimeout(navUpdateLiveSummary, 100);
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SR) {
         document.getElementById("nav-status").style.color = "var(--yellow)";
@@ -2268,198 +2254,27 @@ async function wizardSetupBoot(btn) {
   btn.disabled = false;
 }
 
-// ── Navigate — global functions with inline onclick ──
-var navRecog = null, navListening = false;
-
-function navSaveLang() {
-  var lang = document.getElementById("nav-lang").value;
-  localStorage.setItem("navLang", lang);
-}
-
-function navRestoreLang() {
-  var saved = localStorage.getItem("navLang");
-  if (saved) {
-    var sel = document.getElementById("nav-lang");
-    if (sel) sel.value = saved;
-  }
-}
-navRestoreLang();
-
-function navStatus(msg, color) {
-  var el = document.getElementById("nav-status");
-  el.textContent = msg;
-  el.style.color = color || "var(--muted)";
-}
-
-function navGo() {
-  var txt = document.getElementById("nav-text-input").value.trim();
-  if (!txt) return;
-  navSearch(navExtract(txt));
-}
-
-function navClear() {
-  document.getElementById("nav-text-input").value = "";
-  document.getElementById("nav-suggestions").innerHTML = "";
-  navStatus("");
-}
-
-function navExtract(text) {
-  // English patterns
-  var enRe = /(?:go to|navigate to|take me to|drive to|route to|i want to go to|head to|find)\s+(.+)/i;
-  // French patterns
-  var frRe = /(?:aller [aà]|emmène.moi [aà]|emmene.moi [aà]|je veux aller [aà]|conduis.moi [aà]|direction|itinéraire vers|itineraire vers|trouve|amène.moi [aà]|amene.moi [aà]|naviguer vers|route vers|va [aà])\s+(.+)/i;
-  var m = enRe.exec(text) || frRe.exec(text);
-  return m ? m[m.length-1].trim().replace(/[?.!]$/, "") : text.trim().replace(/[?.!]$/, "");
-}
-
-async function navSearch(query) {
-  navStatus("⟳ Searching for " + query + "…");
-  document.getElementById("nav-suggestions").innerHTML = "";
-  try {
-    var url = "https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&q=" + encodeURIComponent(query);
-    var r = await fetch(url, { headers: { "Accept-Language": "en" } });
-    var places = await r.json();
-    if (!places || !places.length) { navStatus("✗ No results for " + query, "var(--red)"); return; }
-    navStatus("✓ " + places.length + " results", "var(--green)");
-    navRender(places, query);
-  } catch(e) {
-    navStatus("✗ " + e.message, "var(--red)");
-  }
-}
-
-function navRender(places, query) {
-  var el = document.getElementById("nav-suggestions");
-  el.innerHTML = "";
-  var icons = { restaurant:"🍽", hotel:"🏨", hospital:"🏥", fuel:"⛽", parking:"🅿", shop:"🛍" };
-  places.forEach(function(p) {
-    var name = p.display_name.split(",")[0];
-    var addr = p.display_name.split(",").slice(1,3).join(",").trim();
-    var icon = icons[p.type] || icons[p.class] || "📍";
-    var card = document.createElement("div");
-    card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;align-items:center;gap:12px;margin-bottom:10px;";
-    var btn = document.createElement("button");
-    btn.className = "install-btn";
-    btn.style.cssText = "font-size:11px;padding:6px 12px;flex-shrink:0;";
-    btn.textContent = "🗺 ABRP";
-    btn.onclick = function() {
-      var lat = parseFloat(p.lat);
-      var lon = parseFloat(p.lon);
-      navStatus("⟳ Getting current position…", "var(--accent)");
-
-      function openAbrp(startLat, startLon) {
-        var destinations = startLat !== null
-          ? [
-              {"address": "Current Location", "lat": startLat, "lon": startLon},
-              {"address": name, "lat": lat, "lon": lon}
-            ]
-          : [{"address": name, "lat": lat, "lon": lon}];
-
-        var token = localStorage.getItem("abrpToken");
-
-        if (token) {
-          // Send plan to ABRP account via API → syncs to mobile app automatically
-          navStatus("⟳ Sending plan to ABRP app…", "var(--accent)");
-          fetch(SERVER + "/abrp-plan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token: token, destinations: destinations })
-          })
-          .then(function(r) { return r.json(); })
-          .then(function(data) {
-            if (data.success) {
-              navStatus("✓ Plan sent to ABRP app → " + name, "var(--green)");
-            } else {
-              // Fallback: open in browser if API fails
-              navStatus("⚠ API failed, opening browser… " + (data.error || ""), "var(--yellow)");
-              openAbrpBrowser(destinations);
-            }
-          })
-          .catch(function() {
-            openAbrpBrowser(destinations);
-          });
-        } else {
-          // No token — open in browser
-          navStatus("⚠ No ABRP token — opening browser (login in ABRP tab first)", "var(--yellow)");
-          openAbrpBrowser(destinations);
-        }
-      }
-
-      function openAbrpBrowser(destinations) {
-        var params = new URLSearchParams({
-          destinations:   JSON.stringify(destinations),
-          car_model:      "byd:sealion:25:82:rwd",
-          charge_stops:   "optimal",
-          allow_motorway: "true",
-          allow_toll:     "true",
-          allow_ferry:    "true",
-          allow_border:   "true",
-        });
-        window.open("https://abetterrouteplanner.com/?" + params.toString(), "_blank");
-      }
-
-      // Try browser geolocation first
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          function(pos) { openAbrp(pos.coords.latitude, pos.coords.longitude); },
-          function()    { openAbrp(null, null); }, // denied or failed — open without start
-          { timeout: 5000, maximumAge: 30000 }
-        );
-      } else {
-        openAbrp(null, null);
-      }
-    };
-    var info = document.createElement("div");
-    info.style.cssText = "flex:1;min-width:0;";
-    info.innerHTML = "<div style='font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + name + "</div>" +
-      "<div style='font-size:11px;color:var(--muted);margin-top:2px;'>" + addr + "</div>" +
-      "<div style='font-size:10px;color:var(--muted2);font-family:var(--mono);margin-top:2px;'>" + parseFloat(p.lat).toFixed(4) + ", " + parseFloat(p.lon).toFixed(4) + "</div>";
-    card.appendChild(document.createTextNode(icon + " "));
-    card.appendChild(info);
-    card.appendChild(btn);
-    el.appendChild(card);
-  });
-}
-
-function navMicClick() {
-  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  var btn = document.getElementById("nav-mic-btn");
-  if (!SR) {
-    navStatus("⚠ Voix non supportée — tapez votre destination / Voice not supported", "var(--yellow)");
-    document.getElementById("nav-text-input").focus();
-    return;
-  }
-  if (navListening) {
-    navRecog && navRecog.stop();
-    return;
-  }
-  navRecog = new SR();
-  navRecog.lang = document.getElementById("nav-lang").value;
-  navRecog.interimResults = false;
-  navRecog.onstart = function() {
-    navListening = true;
-    btn.textContent = "⏹";
-    btn.style.background = "var(--red)";
-    btn.style.borderColor = "var(--red)";
-    btn.style.color = "#fff";
-    navStatus("🎙 En écoute… / Listening…", "var(--accent)");
-  };
-  navRecog.onresult = function(e) {
-    var t = e.results[0][0].transcript;
-    document.getElementById("nav-text-input").value = t;
-    navSearch(navExtract(t));
-  };
-  navRecog.onerror = function(e) {
-    navStatus("⚠ " + (e.error === "not-allowed" ? "Mic denied — use text box" : e.error), "var(--yellow)");
-  };
-  navRecog.onend = function() {
-    navListening = false;
-    btn.textContent = "🎙";
-    btn.style.background = "var(--accent-dim)";
-    btn.style.borderColor = "var(--accent)";
-    btn.style.color = "var(--accent)";
-  };
-  navRecog.start();
-}
+// ── Tesla AI Route Assistant ──
+var navRecog=null,navListening=false,navSelectedPlace=null,navLastPlaces=[];
+function navSaveLang(){var lang=document.getElementById("nav-lang")&&document.getElementById("nav-lang").value;if(lang)localStorage.setItem("navLang",lang)}
+function navRestoreLang(){var saved=localStorage.getItem("navLang"),sel=document.getElementById("nav-lang");if(saved&&sel)sel.value=saved}setTimeout(navRestoreLang,0);
+function navStatus(msg,color){var el=document.getElementById("nav-status");if(!el)return;el.textContent=msg||"";el.style.color=color||"#7e91a7"}
+function navExtract(text){var en=/(?:go to|navigate to|take me to|drive to|route to|i want to go to|head to|find|search for)\s+(.+)/i,fr=/(?:aller [aà]|emmène.moi [aà]|emmene.moi [aà]|je veux aller [aà]|conduis.moi [aà]|direction|itinéraire vers|itineraire vers|trouve|amène.moi [aà]|amene.moi [aà]|naviguer vers|route vers|va [aà])\s+(.+)/i,m=en.exec(text)||fr.exec(text);return(m?m[m.length-1]:text).trim().replace(/[?.!]$/,'')}
+function navGo(){var input=document.getElementById("nav-text-input"),txt=input?input.value.trim():"";if(!txt){navStatus("Type a destination first","var(--yellow)");return}navSearch(navExtract(txt))}
+async function navSearch(query){navSelectedPlace=null;navLastPlaces=[];navHideSelection();navStatus("Searching for "+query+"…","var(--accent)");var out=document.getElementById("nav-suggestions");if(out)out.innerHTML="";try{var r=await fetch(SERVER+"/navigate?q="+encodeURIComponent(query)),data=await r.json(),places=data.places||data.results||[];if(!places.length){navStatus("No destination found for "+query,"var(--red)");return}navLastPlaces=places.slice(0,5);navStatus("Select one destination to confirm","var(--green)");navRender(navLastPlaces)}catch(e){navStatus("Search failed: "+e.message,"var(--red)")}}
+function navRender(places){var el=document.getElementById("nav-suggestions");if(!el)return;el.innerHTML="";var icons={restaurant:"🍽",hotel:"🏨",hospital:"🏥",fuel:"⛽",parking:"🅿",shop:"🛍",city:"🏙",town:"🏘",village:"🏘"};places.forEach(function(p,idx){var name=(p.display_name||"Destination").split(",")[0],addr=(p.display_name||"").split(",").slice(1,4).join(",").trim(),icon=icons[p.type]||icons[p.class]||"📍",card=document.createElement("div");card.className="tesla-place-card";card.onclick=function(){navSelectPlace(p,card)};card.innerHTML="<div class='tesla-place-icon'>"+icon+"</div><div style='min-width:0;flex:1'><div class='tesla-place-name'>"+navEscape(name)+"</div><div class='tesla-place-address'>"+navEscape(addr||p.display_name||"")+"</div><div class='tesla-place-coords'>"+Number(p.lat).toFixed(5)+", "+Number(p.lon).toFixed(5)+"</div></div>";el.appendChild(card);if(idx===0)navSelectPlace(p,card,true)})}
+function navEscape(s){return String(s||"").replace(/[&<>\"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]})}
+function navSelectPlace(place,card,silent){navSelectedPlace=place;document.querySelectorAll(".tesla-place-card.selected").forEach(function(x){x.classList.remove("selected")});if(card)card.classList.add("selected");var box=document.getElementById("nav-selected"),actions=document.getElementById("nav-actions"),name=(place.display_name||"Destination").split(",")[0];if(box){box.style.display="block";box.innerHTML="<div class='title'>"+navEscape(name)+"</div><div class='address'>"+navEscape(place.display_name||"")+"</div><div class='tesla-place-coords'>Confirmed destination · "+Number(place.lat).toFixed(5)+", "+Number(place.lon).toFixed(5)+"</div>"}if(actions)actions.style.display="grid";if(!silent)navStatus("Destination selected: "+name,"var(--green)")}
+function navHideSelection(){var box=document.getElementById("nav-selected"),actions=document.getElementById("nav-actions");if(box){box.style.display="none";box.innerHTML=""}if(actions)actions.style.display="none"}
+function navClear(){navSelectedPlace=null;navLastPlaces=[];var input=document.getElementById("nav-text-input"),out=document.getElementById("nav-suggestions");if(input)input.value="";if(out)out.innerHTML="";navHideSelection();navStatus("Ready")}
+function navBuildDestinations(place,startLat,startLon){var name=(place.display_name||"Destination").split(",")[0],dest={address:name,name:name,lat:parseFloat(place.lat),lon:parseFloat(place.lon)};return(startLat!==null&&startLon!==null)?[{address:"Current Location",name:"Current Location",lat:startLat,lon:startLon},dest]:[dest]}
+function navWithCurrentPosition(cb){if(!navigator.geolocation)return cb(null,null);navigator.geolocation.getCurrentPosition(function(pos){cb(pos.coords.latitude,pos.coords.longitude)},function(){cb(null,null)},{timeout:5000,maximumAge:30000})}
+function navOpenAbrpBrowser(destinations){var params=new URLSearchParams({destinations:JSON.stringify(destinations),car_model:"byd:sealion:25:82:rwd",charge_stops:"optimal",allow_motorway:"true",allow_toll:"true",allow_ferry:"true",allow_border:"true"});window.open("https://abetterrouteplanner.com/?"+params.toString(),"_blank")}
+function navSendSelectedToAbrp(){if(!navSelectedPlace){navStatus("Select a destination first","var(--yellow)");return}navStatus("Preparing ABRP route…","var(--accent)");navWithCurrentPosition(function(startLat,startLon){var destinations=navBuildDestinations(navSelectedPlace,startLat,startLon),token=localStorage.getItem("abrpToken");if(!token){navStatus("No ABRP token saved — opening ABRP in browser","var(--yellow)");navOpenAbrpBrowser(destinations);return}fetch(SERVER+"/abrp-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:token,destinations:destinations})}).then(function(r){return r.json()}).then(function(data){if(data.success)navStatus("Plan sent to ABRP","var(--green)");else{navStatus("ABRP API failed — opening browser","var(--yellow)");navOpenAbrpBrowser(destinations)}}).catch(function(){navStatus("ABRP API failed — opening browser","var(--yellow)");navOpenAbrpBrowser(destinations)})})}
+function navOpenSelectedMaps(){if(!navSelectedPlace){navStatus("Select a destination first","var(--yellow)");return}window.open("https://www.google.com/maps?q="+encodeURIComponent(navSelectedPlace.lat+","+navSelectedPlace.lon),"_blank")}
+async function navUpdateLiveSummary(){try{var r=await fetch(SERVER+"/properties"),data=await r.json(),p=data.properties||{},val=function(id){var x=p[id];return x&&typeof x==="object"&&"value" in x?x.value:x},soc=val("0x21604402"),range=val("0x21404401"),kwh=val("0x21604421"),socEl=document.getElementById("nav-soc"),rangeEl=document.getElementById("nav-range"),kwhEl=document.getElementById("nav-kwh");if(socEl&&soc!=null)socEl.textContent=Number(soc).toFixed(0)+"%";if(rangeEl&&range!=null)rangeEl.textContent=Number(range).toFixed(0)+" km";if(kwhEl&&kwh!=null)kwhEl.textContent=Number(kwh).toFixed(1)}catch(e){}}
+setInterval(function(){if(document.getElementById("navigate-pane")&&document.getElementById("navigate-pane").style.display!=="none")navUpdateLiveSummary()},10000);
+function navMicClick(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition,btn=document.getElementById("nav-mic-btn");if(!SR){navStatus("Voice not supported on this browser — use the text box","var(--yellow)");var input=document.getElementById("nav-text-input");if(input)input.focus();return}if(navListening){navRecog&&navRecog.stop();return}navRecog=new SR();navRecog.lang=(document.getElementById("nav-lang")||{}).value||"en-US";navRecog.interimResults=false;navRecog.onstart=function(){navListening=true;btn.textContent="⏹";navStatus("Listening…","var(--accent)")};navRecog.onresult=function(e){var t=e.results[0][0].transcript;document.getElementById("nav-text-input").value=t;navSearch(navExtract(t))};navRecog.onerror=function(e){navStatus(e.error==="not-allowed"?"Mic denied — use text box":e.error,"var(--yellow)")};navRecog.onend=function(){navListening=false;btn.textContent="🎙"};navRecog.start()}
 
 // ── History tab ──
 
