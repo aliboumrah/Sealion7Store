@@ -23,6 +23,148 @@ const IS_TERMUX = fs.existsSync("/data/data/com.termux") ||
 
 console.log(`Mode: ${IS_TERMUX ? "🤖 Termux → ADB localhost:5555" : "💻 PC → ADB USB"}`);
 
+// ── Car property cache/history ──
+const POLL_INTERVAL_MS = 10_000;
+const CACHE_FILE       = path.join(__dirname, "car_props_cache.json");
+const HISTORY_FILE     = path.join(__dirname, "car_props_history.json");
+const HISTORY_MAX_ROWS = 20_000;
+
+let carPropsCache     = readJsonFile(CACHE_FILE, {});
+let carPropsHistory   = readJsonFile(HISTORY_FILE, []);
+let carPollRunning    = false;
+let carLastPollTs     = 0;
+let carLastPollError  = null;
+let carLastChangedIds = [];
+
+function readJsonFile(file, fallback) {
+  try {
+    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (e) {
+    console.warn(`Could not read ${path.basename(file)}:`, e.message);
+  }
+  return fallback;
+}
+
+function writeJsonFile(file, data) {
+  try {
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.warn(`Could not write ${path.basename(file)}:`, e.message);
+  }
+}
+
+function sameValue(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function parseCarServiceProperties(text) {
+  const evStart = text.indexOf("*All Events");
+  const evEnd   = text.indexOf("*Property handlers*", evStart);
+  const evBody  = evStart > -1 ? text.slice(evStart, evEnd > -1 ? evEnd : undefined) : "";
+
+  const prStart = text.indexOf("*All properties*");
+  const prEnd   = text.indexOf("*All Events", prStart);
+  const prBody  = prStart > -1 ? text.slice(prStart, prEnd > -1 ? prEnd : undefined) : "";
+
+  const idToName = {};
+  const propNameRe = /Property:(0x[0-9a-fA-F]+),\s*Property name:([^,]+),/g;
+  for (const m of prBody.matchAll(propNameRe)) {
+    idToName[m[1].toLowerCase()] = m[2].trim();
+  }
+
+  const evRe = /lastEvent:Property:(0x[0-9a-fA-F]+),status:\s*(\d+),timestamp:(\d+),zone:[^,]+,floatValues:\s*\[([^\]]*)\],int32Values:\s*\[([^\]]*)\],int64Values:\s*\[([^\]]*)\],bytes:\s*\[[^\]]*\],string:\s*([^,\r\n]*)/g;
+  const properties = {};
+  const eventChunks = evBody.split(/(?=event count:)/);
+
+  for (const chunk of eventChunks) {
+    const m = evRe.exec(chunk);
+    evRe.lastIndex = 0;
+    if (!m) continue;
+
+    const id     = m[1].toLowerCase();
+    const status = parseInt(m[2], 10);
+    const floats = m[4].trim().split(",").map(v => v.trim()).filter(Boolean).map(Number);
+    const ints   = m[5].trim().split(",").map(v => v.trim()).filter(Boolean).map(Number);
+    const str    = m[7] ? m[7].trim() : "";
+    const name   = idToName[id] || id;
+
+    let value;
+    if (floats.length > 0 && floats.some(v => v !== 0)) {
+      value = floats.length === 1 ? floats[0] : floats;
+    } else if (ints.length > 0) {
+      value = ints.length === 1 ? ints[0] : ints;
+    } else if (floats.length > 0) {
+      value = floats.length === 1 ? floats[0] : floats;
+    } else if (str) {
+      value = str;
+    } else {
+      value = null;
+    }
+
+    properties[id] = { id, name, value, status };
+  }
+
+  return properties;
+}
+
+function buildHistorySnapshot(properties, ts) {
+  const snapshot = { ts };
+  for (const [id, prop] of Object.entries(properties)) snapshot[id] = prop.value;
+  return snapshot;
+}
+
+function diffChangedIds(oldProps, newProps) {
+  const changed = [];
+  for (const [id, prop] of Object.entries(newProps)) {
+    if (!oldProps[id] || !sameValue(oldProps[id].value, prop.value) || oldProps[id].status !== prop.status) {
+      changed.push(id);
+    }
+  }
+  return changed;
+}
+
+async function pollCarProperties(serial = null, reason = "timer") {
+  if (carPollRunning) return { skipped: true, reason: "poll already running" };
+  carPollRunning = true;
+  try {
+    await ensureConnected();
+    const result = await runAdb(["shell", "dumpsys", "car_service"], serial);
+    carLastPollTs = Date.now();
+
+    if (!result.success) {
+      carLastPollError = result.output || "dumpsys car_service failed";
+      console.warn("car_service poll failed:", carLastPollError);
+      return { success: false, error: carLastPollError };
+    }
+
+    const newProps = parseCarServiceProperties(result.output || "");
+    const changedIds = diffChangedIds(carPropsCache || {}, newProps);
+    carLastChangedIds = changedIds;
+    carLastPollError = null;
+
+    if (Object.keys(newProps).length > 0) {
+      carPropsCache = newProps;
+      writeJsonFile(CACHE_FILE, carPropsCache);
+
+      if (changedIds.length > 0 || carPropsHistory.length === 0) {
+        carPropsHistory.push(buildHistorySnapshot(newProps, carLastPollTs));
+        if (carPropsHistory.length > HISTORY_MAX_ROWS) carPropsHistory = carPropsHistory.slice(-HISTORY_MAX_ROWS);
+        writeJsonFile(HISTORY_FILE, carPropsHistory);
+      }
+    }
+
+    console.log(`car_service poll (${reason}): ${Object.keys(newProps).length} props, ${changedIds.length} changed`);
+    return { success: true, count: Object.keys(newProps).length, changedIds };
+  } catch (e) {
+    carLastPollTs = Date.now();
+    carLastPollError = e.message;
+    console.warn("car_service poll error:", e.message);
+    return { success: false, error: e.message };
+  } finally {
+    carPollRunning = false;
+  }
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin":  "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -399,71 +541,28 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── GET /properties — fetch live property values mapped to names ──
+  // ── GET /properties — return cached car property values ──
+  // Background poller updates this cache every 10 seconds.
+  // Add ?refresh=1 to force a one-off fresh dumpsys before returning.
   if (req.method === "GET" && pathname === "/properties") {
     const serial = (parsed.query && parsed.query.serial) || null;
-    const result = await runAdb(["shell", "dumpsys", "car_service"], serial);
-    if (!result.success) {
-      res.writeHead(200);
-      res.end(JSON.stringify({ success: false, properties: {} }));
-      return;
-    }
-    const text = result.output;
+    const refresh = parsed.query && (parsed.query.refresh === "1" || parsed.query.refresh === "true");
 
-    // Extract sections
-    const evStart = text.indexOf("*All Events");
-    const evEnd   = text.indexOf("*Property handlers*", evStart);
-    const evBody  = evStart > -1 ? text.slice(evStart, evEnd > -1 ? evEnd : undefined) : "";
-
-    const prStart = text.indexOf("*All properties*");
-    const prEnd   = text.indexOf("*All Events", prStart);
-    const prBody  = prStart > -1 ? text.slice(prStart, prEnd > -1 ? prEnd : undefined) : "";
-
-    // Build id→name map
-    const idToName = {};
-    const propNameRe = /Property:(0x[0-9a-fA-F]+),\s*Property name:([^,]+),/g;
-    for (const m of prBody.matchAll(propNameRe)) {
-      idToName[m[1].toLowerCase()] = m[2].trim();
-    }
-
-    // Parse events — split into chunks of ~100 events to avoid JS regex limits
-    const evRe = /lastEvent:Property:(0x[0-9a-fA-F]+),status:\s*(\d+),timestamp:(\d+),zone:[^,]+,floatValues:\s*\[([^\]]*)\],int32Values:\s*\[([^\]]*)\],int64Values:\s*\[([^\]]*)\],bytes:\s*\[[^\]]*\],string:\s*([^,\r\n]*)/g;
-
-    const properties = {};
-
-    // Split evBody into individual event chunks to avoid regex engine limits
-    // Each event starts with "event count:"
-    const eventChunks = evBody.split(/(?=event count:)/);
-    for (const chunk of eventChunks) {
-      const m = evRe.exec(chunk);
-      evRe.lastIndex = 0; // reset for next chunk
-      if (!m) continue;
-
-      const id     = m[1].toLowerCase();
-      const status = parseInt(m[2]);
-      const floats = m[4].trim().split(",").map(v => v.trim()).filter(Boolean).map(Number);
-      const ints   = m[5].trim().split(",").map(v => v.trim()).filter(Boolean).map(Number);
-      const str    = m[7] ? m[7].trim() : "";
-      const name   = idToName[id] || id;
-
-      let value;
-      if (floats.length > 0 && floats.some(v => v !== 0)) {
-        value = floats.length === 1 ? floats[0] : floats;
-      } else if (ints.length > 0) {
-        value = ints.length === 1 ? ints[0] : ints;
-      } else if (floats.length > 0) {
-        value = floats.length === 1 ? floats[0] : floats;
-      } else if (str) {
-        value = str;
-      } else {
-        value = null;
-      }
-
-      properties[id] = { id, name, value, status };
+    if (refresh || Object.keys(carPropsCache || {}).length === 0) {
+      await pollCarProperties(serial, refresh ? "manual refresh" : "empty cache");
     }
 
     res.writeHead(200);
-    res.end(JSON.stringify({ success: true, properties, count: Object.keys(properties).length }));
+    res.end(JSON.stringify({
+      success: !carLastPollError,
+      properties: carPropsCache || {},
+      count: Object.keys(carPropsCache || {}).length,
+      cached: true,
+      lastPollTs: carLastPollTs,
+      lastPollError: carLastPollError,
+      lastChangedIds: carLastChangedIds,
+      pollIntervalMs: POLL_INTERVAL_MS
+    }));
     return;
   }
 
@@ -808,6 +907,11 @@ if (IS_TERMUX) {
     console.log("ADB:", out);
   });
 }
+
+// Start car_service background polling.
+// First poll runs shortly after startup; then every 10 seconds.
+setTimeout(() => pollCarProperties(null, "startup"), 1500);
+setInterval(() => pollCarProperties(null, "timer"), POLL_INTERVAL_MS);
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`\n🚀 Server on http://localhost:${PORT}`);

@@ -515,8 +515,8 @@
         <option value="nonzero">Non-zero only</option>
         <option value="error">Errors only</option>
       </select>
-      <button id="cs-refresh-btn" class="hdr-btn">⟳ Refresh</button>
-      <button id="cs-live-btn" class="hdr-btn" style="color:var(--green);">▶ Live</button>
+      <button id="cs-refresh-btn" class="hdr-btn" title="Force one fresh dumpsys read on the server">⟳ Force refresh</button>
+      <button id="cs-live-btn" class="hdr-btn" style="color:var(--green);" title="Refresh UI from server cache every 10 seconds">▶ Live cache</button>
       <button id="cs-restart-btn" class="hdr-btn" style="color:var(--yellow);" title="Restart car_service daemon">↺ Restart</button>
       <span id="cs-status" style="font-size:11px;color:var(--muted);white-space:nowrap;font-family:var(--mono);"></span>
     </div>
@@ -526,7 +526,7 @@
 
     <!-- Property list -->
     <div id="cs-list" style="flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;">
-      <div style="color:var(--muted);font-size:12px;text-align:center;padding:30px;">Click ⟳ Refresh to load live property values</div>
+      <div style="color:var(--muted);font-size:12px;text-align:center;padding:30px;">Waiting for background cache. Use ⟳ Force refresh if needed</div>
     </div>
   </div>
 
@@ -1672,27 +1672,49 @@ const CS_DASHBOARD_PROPS = [
   { id: "0x21407407", label: "HV Voltage",    unit: "V",       icon: "⚡" }, // MOTOR_MCU_GENERATRIX_VOLT_REAR=571
 ];
 
-async function loadCarService() {
+async function loadCarService(forceRefresh = false) {
   const serial = deviceSel.value || null;
   const status = document.getElementById("cs-status");
   const list   = document.getElementById("cs-list");
-  status.textContent = "Loading…";
-  list.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center;"><span class="spinner">⟳</span> Running dumpsys car_service…</div>`;
+
+  status.style.color = "var(--muted)";
+  status.textContent = forceRefresh ? "Force refresh…" : "Loading cache…";
+
+  // Do not clear the list during normal cache refresh; it prevents UI flicker.
+  if (!Object.keys(csProperties || {}).length) {
+    list.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center;"><span class="spinner">⟳</span> Waiting for cached car_service values…</div>`;
+  }
 
   try {
-    const url = serial
-      ? `${SERVER}/properties?serial=${encodeURIComponent(serial)}`
-      : `${SERVER}/properties`;
+    const params = new URLSearchParams();
+    if (serial) params.set("serial", serial);
+    if (forceRefresh) params.set("refresh", "1");
+
+    const url = `${SERVER}/properties${params.toString() ? "?" + params.toString() : ""}`;
     const res  = await fetch(url);
     const data = await res.json();
-    if (!data.success) throw new Error("Failed to load properties");
-    csProperties = data.properties;
-    status.textContent = `${data.count} properties · ${new Date().toLocaleTimeString()}`;
+
+    if (!data.success && data.lastPollError) {
+      throw new Error(data.lastPollError);
+    }
+
+    csProperties = data.properties || {};
+    const count = data.count ?? Object.keys(csProperties).length;
+    const lastPoll = data.lastPollTs ? new Date(data.lastPollTs).toLocaleTimeString() : "not yet";
+    const interval = data.pollIntervalMs ? `${Math.round(data.pollIntervalMs / 1000)}s` : "cache";
+    const changedCount = Array.isArray(data.lastChangedIds) ? data.lastChangedIds.length : 0;
+
+    status.textContent = `${count} properties · cache updated ${lastPoll} · poll ${interval} · changed ${changedCount}`;
+    status.style.color = data.lastPollError ? "var(--yellow)" : "var(--muted)";
+
     renderCsDashboard();
     renderCsList();
   } catch(e) {
-    status.textContent = "Error";
-    list.innerHTML = `<div style="color:var(--red);font-size:12px;padding:20px;">✗ ${e.message}</div>`;
+    status.textContent = "Error: " + e.message;
+    status.style.color = "var(--red)";
+    if (!Object.keys(csProperties || {}).length) {
+      list.innerHTML = `<div style="color:var(--red);font-size:12px;padding:20px;">✗ ${e.message}</div>`;
+    }
   }
 }
 
@@ -1831,12 +1853,12 @@ document.getElementById("cs-live-btn").addEventListener("click", () => {
     csLiveRunning = true;
     btn.textContent = "⏹ Live";
     btn.style.color = "var(--red)";
-    loadCarService();
-    csLiveInterval = setInterval(loadCarService, 3000);
+    loadCarService(false);
+    csLiveInterval = setInterval(() => loadCarService(false), 10000);
   }
 });
 
-document.getElementById("cs-refresh-btn").addEventListener("click", loadCarService);
+document.getElementById("cs-refresh-btn").addEventListener("click", () => loadCarService(true));
 document.getElementById("cs-search").addEventListener("input", renderCsList);
 document.getElementById("cs-filter").addEventListener("change", renderCsList);
 
@@ -2421,12 +2443,17 @@ function navMicClick() {
 
 async function loadHistory() {
   const status = document.getElementById("hist-status");
-  status.textContent = "⟳ Loading…";
+  status.textContent = "⟳ Loading history…";
   try {
     const res  = await fetch(`${SERVER}/history`);
     const data = await res.json();
+    if (data.success === false) throw new Error(data.error || "Failed to load history");
+
     histData = data.history || [];
-    status.textContent = `${histData.length} snapshots · ${new Date().toLocaleTimeString()}`;
+    const lastTs = histData.length && histData[histData.length - 1].ts
+      ? new Date(histData[histData.length - 1].ts).toLocaleTimeString()
+      : "none";
+    status.textContent = `${histData.length} changed snapshots · last ${lastTs}`;
     renderHistChart();
   } catch(e) {
     status.textContent = "✗ " + e.message;
