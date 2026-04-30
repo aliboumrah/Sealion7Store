@@ -568,31 +568,20 @@ body.history-active #metrics-panel { display:flex; }
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;flex-shrink:0;">
       <div class="apk-section-title">Authentication</div>
 
-      <!-- User info (shown when logged in) -->
-      <div id="abrp-user-info" style="display:none;align-items:center;gap:12px;padding:10px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:8px;margin-bottom:10px;">
-        <span style="font-size:22px;">👤</span>
-        <div style="flex:1;">
-          <div id="abrp-user-name" style="font-size:13px;font-weight:600;color:var(--text);"></div>
+      <div id="abrp-user-info" style="display:none;align-items:center;gap:12px;padding:12px;background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.28);border-radius:12px;margin-bottom:12px;">
+        <span style="font-size:24px;">✅</span>
+        <div style="flex:1;min-width:0;">
+          <div id="abrp-user-name" style="font-size:14px;font-weight:700;color:var(--text);">Connected to ABRP</div>
           <div id="abrp-user-email" style="font-size:11px;color:var(--muted);margin-top:2px;"></div>
           <div id="abrp-vehicle-name" style="font-size:11px;color:var(--accent);margin-top:2px;"></div>
         </div>
-        <button id="abrp-logout-btn" class="hdr-btn" style="color:var(--red);border-color:var(--red-dim);">Logout</button>
+        <button id="abrp-logout-btn" class="hdr-btn" style="color:var(--red);border-color:var(--red-dim);">Disconnect</button>
       </div>
 
-      <!-- OAuth login button -->
       <div id="abrp-login-section">
-        <div class="apk-section-title" style="margin-bottom:6px;">OAuth Settings</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-          <input id="abrp-client-id" type="text" placeholder="ABRP client_id"
-            style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;"/>
-          <input id="abrp-api-key" type="password" placeholder="ABRP API key / client_secret"
-            style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;"/>
-        </div>
-        <div style="display:flex;gap:8px;margin-bottom:10px;">
-          <button id="abrp-save-oauth-btn" class="hdr-btn" style="flex:1;">Save OAuth Settings</button>
-          <button id="abrp-clear-oauth-btn" class="hdr-btn" style="flex:1;color:var(--yellow);">Clear OAuth Settings</button>
-        </div>
+        <div class="apk-section-title" style="margin-bottom:6px;">ABRP OAuth</div>
         <div class="tip-box" style="margin-top:0;margin-bottom:10px;">
+          <strong>App:</strong> SEALION 7 PILOT<br/>
           <strong>Redirect URI:</strong> register exactly this URL in ABRP: <code id="abrp-redirect-preview"></code>
         </div>
         <button id="abrp-oauth-btn" class="install-btn" style="width:100%;justify-content:center;display:flex;align-items:center;gap:8px;margin-bottom:10px;">
@@ -1938,133 +1927,143 @@ document.getElementById("cs-restart-btn").addEventListener("click", async () => 
 
 
 // ── ABRP settings/OAuth ──
+const ABRP_CLIENT_ID = "SEALION 7 PILOT";
 let abrpToken = localStorage.getItem("abrpToken") || "";
 let abrpInterval = null;
 let abrpRunning  = false;
 
-const ABRP_AUTH_URL  = "https://abetterrouteplanner.com/oauth/auth";
-const ABRP_REDIRECT  = window.location.origin + window.location.pathname;
+function abrpSetStatus(message, color = "var(--muted)") {
+  const el = document.getElementById("abrp-status");
+  if (el) { el.textContent = message; el.style.color = color; }
+}
 
-function abrpLoadOAuthSettings() {
-  const cid = document.getElementById("abrp-client-id");
-  const key = document.getElementById("abrp-api-key");
+function abrpGetRedirectUri() {
+  // OAuth callback is handled by the Node server so the token can be persisted server-side.
+  return SERVER.replace(/\/$/, "") + "/oauth/callback";
+}
+
+function abrpRenderDisconnected(redirectUri) {
+  const userBox = document.getElementById("abrp-user-info");
+  const loginBox = document.getElementById("abrp-login-section");
+  if (userBox) userBox.style.display = "none";
+  if (loginBox) loginBox.style.display = "";
   const red = document.getElementById("abrp-redirect-preview");
-  if (cid) cid.value = localStorage.getItem("abrpClientId") || "";
-  if (key) key.value = localStorage.getItem("abrpApiKey") || "";
-  if (red) red.textContent = ABRP_REDIRECT;
-}
-function abrpSaveOAuthSettings() {
-  const cid = (document.getElementById("abrp-client-id")?.value || "").trim();
-  const key = (document.getElementById("abrp-api-key")?.value || "").trim();
-  if (cid) localStorage.setItem("abrpClientId", cid); else localStorage.removeItem("abrpClientId");
-  if (key) localStorage.setItem("abrpApiKey", key); else localStorage.removeItem("abrpApiKey");
-  const st = document.getElementById("abrp-status");
-  if (st) st.innerHTML = '<span style="color:var(--green);">✓ OAuth settings saved</span>';
-}
-function abrpClearOAuthSettings() {
-  localStorage.removeItem("abrpClientId");
-  localStorage.removeItem("abrpApiKey");
-  abrpLoadOAuthSettings();
-  const st = document.getElementById("abrp-status");
-  if (st) st.textContent = "OAuth settings cleared.";
-}
-abrpLoadOAuthSettings();
-
-if (abrpToken) {
-  const inp = document.getElementById("abrp-token");
-  if (inp) inp.value = abrpToken;
+  if (red) red.textContent = redirectUri || abrpGetRedirectUri();
+  abrpSetStatus("🔴 Not connected to ABRP", "var(--yellow)");
 }
 
-(async () => {
+function abrpRenderConnected(data) {
+  const user = data?.user || {};
+  const userBox = document.getElementById("abrp-user-info");
+  const loginBox = document.getElementById("abrp-login-section");
+  if (userBox) userBox.style.display = "flex";
+  if (loginBox) loginBox.style.display = "none";
+  const name = user.full_name || "Connected to ABRP";
+  const email = user.email || "";
+  const vehicle = user.vehicle_name || data?.vehicle_name || "";
+  const typecode = user.vehicle_typecode || data?.vehicle_typecode || "";
+  const n = document.getElementById("abrp-user-name");
+  const e = document.getElementById("abrp-user-email");
+  const v = document.getElementById("abrp-vehicle-name");
+  if (n) n.textContent = "✅ " + name;
+  if (e) e.textContent = email;
+  if (v) v.textContent = vehicle ? "🚗 " + vehicle + (typecode ? " · " + typecode : "") : "Vehicle connected";
+  abrpSetStatus("✅ Connected to ABRP", "var(--green)");
+}
+
+async function abrpRefreshStatus() {
+  const red = document.getElementById("abrp-redirect-preview");
+  if (red) red.textContent = abrpGetRedirectUri();
+  try {
+    const res = await fetch(SERVER + "/abrp/status", { cache: "no-store" });
+    const data = await res.json();
+    if (data.redirect_uri && red) red.textContent = data.redirect_uri;
+    if (data.connected) {
+      abrpRenderConnected(data);
+      return data;
+    }
+    abrpRenderDisconnected(data.redirect_uri);
+    return data;
+  } catch(e) {
+    abrpRenderDisconnected(abrpGetRedirectUri());
+    abrpSetStatus("⚠ Server offline or ABRP status unavailable", "var(--red)");
+    return null;
+  }
+}
+window.abrpRefreshStatus = abrpRefreshStatus;
+window.refreshAbrpStatus = abrpRefreshStatus;
+
+async function abrpHandleReturnedAuthCode() {
   const params = new URLSearchParams(window.location.search);
   const authCode = params.get("auth_code") || params.get("code");
-  const returnedState = params.get("state") || "";
-  if (authCode) {
-    const statusEl = document.getElementById("abrp-status");
-    statusEl.textContent = "⟳ Exchanging auth code for token…";
-    try {
-      const expectedState = localStorage.getItem("abrpOAuthState") || "";
-      if (expectedState && returnedState && expectedState !== returnedState) throw new Error("OAuth state mismatch");
-      const clientId = localStorage.getItem("abrpClientId") || "";
-      const apiKey = localStorage.getItem("abrpApiKey") || "";
-      const res = await fetch(SERVER + "/abrp-oauth-token?auth_code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(clientId) + "&client_secret=" + encodeURIComponent(apiKey));
-      const data = await res.json();
-      if (data.access_token) {
-        abrpToken = data.access_token;
-        localStorage.setItem("abrpToken", abrpToken);
-        document.getElementById("abrp-token").value = abrpToken;
-        window.history.replaceState({}, "", window.location.pathname);
-        statusEl.innerHTML = '<span style="color:var(--green);">✓ Logged in!</span>';
-        await abrpFetchUserInfo();
-      } else {
-        statusEl.innerHTML = '<span style="color:var(--red);">✗ OAuth failed: ' + JSON.stringify(data) + '</span>';
-      }
-    } catch(e) {
-      document.getElementById("abrp-status").innerHTML = '<span style="color:var(--red);">✗ ' + e.message + '</span>';
-    }
-  } else if (abrpToken) {
-    await abrpFetchUserInfo();
-  }
-})();
-
-async function abrpFetchUserInfo() {
+  if (!authCode) return false;
+  abrpSetStatus("⟳ Exchanging ABRP auth code…", "var(--accent)");
   try {
-    const apiKey = localStorage.getItem("abrpApiKey") || "";
-    const res = await fetch(SERVER + "/abrp-oauth-me?token=" + encodeURIComponent(abrpToken) + "&api_key=" + encodeURIComponent(apiKey));
+    const res = await fetch(SERVER + "/abrp-oauth-token?auth_code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(ABRP_CLIENT_ID));
     const data = await res.json();
-    if (data.user_id) {
-      document.getElementById("abrp-user-info").style.display = "flex";
-      document.getElementById("abrp-login-section").style.display = "none";
-      document.getElementById("abrp-user-name").textContent = data.full_name || "ABRP User";
-      document.getElementById("abrp-user-email").textContent = data.email || "";
-      document.getElementById("abrp-vehicle-name").textContent = data.vehicle_name ? "🚗 " + data.vehicle_name : "";
-    }
-  } catch(e) {}
+    if (!data.access_token) throw new Error(data.error || JSON.stringify(data));
+    abrpToken = data.access_token;
+    localStorage.setItem("abrpToken", abrpToken);
+    const tokenInput = document.getElementById("abrp-token");
+    if (tokenInput) tokenInput.value = abrpToken;
+    window.history.replaceState({}, "", window.location.pathname);
+    await abrpRefreshStatus();
+    return true;
+  } catch(e) {
+    abrpSetStatus("✗ OAuth failed: " + e.message, "var(--red)");
+    return false;
+  }
 }
 
-document.getElementById("abrp-save-oauth-btn")?.addEventListener("click", abrpSaveOAuthSettings);
-document.getElementById("abrp-clear-oauth-btn")?.addEventListener("click", abrpClearOAuthSettings);
-document.getElementById("abrp-oauth-btn").addEventListener("click", () => {
-  abrpSaveOAuthSettings();
-  const clientId = localStorage.getItem("abrpClientId") || "";
-  const apiKey = localStorage.getItem("abrpApiKey") || "";
-  if (!clientId || !apiKey) {
-    const st = document.getElementById("abrp-status");
-    if (st) st.innerHTML = '<span style="color:var(--red);">✗ Enter client_id and API key first</span>';
-    return;
-  }
+function abrpStartOAuthLogin() {
   const state = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
   localStorage.setItem("abrpOAuthState", state);
   const scope = "get_telemetry set_telemetry get_plan";
-  const authUrl = ABRP_AUTH_URL + "?client_id=" + encodeURIComponent(clientId) + "&scope=" + encodeURIComponent(scope) + "&response_type=code&redirect_uri=" + encodeURIComponent(ABRP_REDIRECT) + "&state=" + encodeURIComponent(state);
+  const authUrl = "https://abetterrouteplanner.com/oauth/auth" +
+    "?client_id=" + encodeURIComponent(ABRP_CLIENT_ID) +
+    "&scope=" + encodeURIComponent(scope) +
+    "&response_type=code" +
+    "&redirect_uri=" + encodeURIComponent(abrpGetRedirectUri()) +
+    "&state=" + encodeURIComponent(state);
   window.location.href = authUrl;
-});
+}
 
-// ── Logout ──
-document.getElementById("abrp-logout-btn").addEventListener("click", () => {
+document.getElementById("abrp-oauth-btn")?.addEventListener("click", abrpStartOAuthLogin);
+
+document.getElementById("abrp-logout-btn")?.addEventListener("click", async () => {
   abrpToken = "";
   localStorage.removeItem("abrpToken");
-  document.getElementById("abrp-token").value = "";
-  document.getElementById("abrp-user-info").style.display    = "none";
-  document.getElementById("abrp-login-section").style.display = "";
-  document.getElementById("abrp-status").textContent = "Logged out.";
+  const tokenInput = document.getElementById("abrp-token");
+  if (tokenInput) tokenInput.value = "";
+  try { await fetch(SERVER + "/abrp/logout", { method: "POST" }); } catch(e) {}
+  abrpRenderDisconnected(abrpGetRedirectUri());
 });
 
-// ── Manual token save ──
-document.getElementById("abrp-save-btn").addEventListener("click", () => {
-  abrpToken = document.getElementById("abrp-token").value.trim();
-  localStorage.setItem("abrpToken", abrpToken);
+document.getElementById("abrp-save-btn")?.addEventListener("click", async () => {
+  const input = document.getElementById("abrp-token");
   const btn = document.getElementById("abrp-save-btn");
-  btn.textContent = "✓ Saved";
-  setTimeout(() => btn.textContent = "Save", 1500);
+  abrpToken = (input?.value || "").trim();
+  if (!abrpToken) { abrpSetStatus("✗ Paste a token first", "var(--red)"); return; }
+  localStorage.setItem("abrpToken", abrpToken);
+  if (btn) btn.textContent = "Saving…";
+  try {
+    await fetch(SERVER + "/abrp-token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: abrpToken }) });
+    await abrpRefreshStatus();
+  } catch(e) {
+    abrpSetStatus("Token saved locally, but server sync failed: " + e.message, "var(--yellow)");
+  } finally {
+    if (btn) { btn.textContent = "✓ Saved"; setTimeout(() => btn.textContent = "Save", 1500); }
+  }
 });
+
+// Auto-reconnect/status restore on reload.
+(async () => {
+  const handled = await abrpHandleReturnedAuthCode();
+  if (!handled) await abrpRefreshStatus();
+})();
 
 async function abrpSend() {
-  const token = abrpToken || document.getElementById("abrp-token").value.trim();
-  if (!token) {
-    document.getElementById("abrp-status").innerHTML = `<span style="color:var(--red);">✗ Enter your ABRP token first</span>`;
-    return;
-  }
+  const token = abrpToken || (document.getElementById("abrp-token")?.value || "").trim();
   const serial    = deviceSel.value || null;
   const statusEl  = document.getElementById("abrp-status");
   const payloadEl = document.getElementById("abrp-payload");
@@ -2075,7 +2074,7 @@ async function abrpSend() {
     const res  = await fetch(`${SERVER}/abrp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, serial })
+      body: JSON.stringify({ token: token || undefined, serial })
     });
     const data = await res.json();
     const tlm    = data.tlm    || {};
@@ -2331,7 +2330,7 @@ function navClear(){navSelectedPlace=null;navLastPlaces=[];var input=document.ge
 function navBuildDestinations(place,startLat,startLon){var name=(place.display_name||"Destination").split(",")[0],dest={address:name,name:name,lat:parseFloat(place.lat),lon:parseFloat(place.lon)};return(startLat!==null&&startLon!==null)?[{address:"Current Location",name:"Current Location",lat:startLat,lon:startLon},dest]:[dest]}
 function navWithCurrentPosition(cb){if(!navigator.geolocation)return cb(null,null);navigator.geolocation.getCurrentPosition(function(pos){cb(pos.coords.latitude,pos.coords.longitude)},function(){cb(null,null)},{timeout:5000,maximumAge:30000})}
 function navOpenAbrpBrowser(destinations){var params=new URLSearchParams({destinations:JSON.stringify(destinations),car_model:"byd:sealion:25:82:rwd",charge_stops:"optimal",allow_motorway:"true",allow_toll:"true",allow_ferry:"true",allow_border:"true"});window.open("https://abetterrouteplanner.com/?"+params.toString(),"_blank")}
-function navSendSelectedToAbrp(){if(!navSelectedPlace){navStatus("Select a destination first","var(--yellow)");return}navStatus("Preparing ABRP route…","var(--accent)");navWithCurrentPosition(function(startLat,startLon){var destinations=navBuildDestinations(navSelectedPlace,startLat,startLon),token=localStorage.getItem("abrpToken");if(!token){navStatus("No ABRP token saved — opening ABRP in browser","var(--yellow)");navOpenAbrpBrowser(destinations);return}fetch(SERVER+"/abrp-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:token,destinations:destinations})}).then(function(r){return r.json()}).then(function(data){if(data.success)navStatus("Plan sent to ABRP","var(--green)");else{navStatus("ABRP API failed — opening browser","var(--yellow)");navOpenAbrpBrowser(destinations)}}).catch(function(){navStatus("ABRP API failed — opening browser","var(--yellow)");navOpenAbrpBrowser(destinations)})})}
+function navSendSelectedToAbrp(){if(!navSelectedPlace){navStatus("Select a destination first","var(--yellow)");return}navStatus("Preparing ABRP route…","var(--accent)");navWithCurrentPosition(function(startLat,startLon){var destinations=navBuildDestinations(navSelectedPlace,startLat,startLon);fetch(SERVER+"/abrp-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({destinations:destinations})}).then(function(r){return r.json()}).then(function(data){if(data.success)navStatus("Plan sent to ABRP","var(--green)");else{navStatus("ABRP API failed — opening browser","var(--yellow)");navOpenAbrpBrowser(destinations)}}).catch(function(){navStatus("ABRP API failed — opening browser","var(--yellow)");navOpenAbrpBrowser(destinations)})})}
 function navOpenSelectedMaps(){if(!navSelectedPlace){navStatus("Select a destination first","var(--yellow)");return}window.open("https://www.google.com/maps?q="+encodeURIComponent(navSelectedPlace.lat+","+navSelectedPlace.lon),"_blank")}
 async function navUpdateLiveSummary(){try{var r=await fetch(SERVER+"/properties"),data=await r.json(),p=data.properties||{},val=function(id){var x=p[id];return x&&typeof x==="object"&&"value" in x?x.value:x},soc=val("0x21604402"),range=val("0x21404401"),kwh=val("0x21604421"),socEl=document.getElementById("nav-soc"),rangeEl=document.getElementById("nav-range"),kwhEl=document.getElementById("nav-kwh");if(socEl&&soc!=null)socEl.textContent=Number(soc).toFixed(0)+"%";if(rangeEl&&range!=null)rangeEl.textContent=Number(range).toFixed(0)+" km";if(kwhEl&&kwh!=null)kwhEl.textContent=Number(kwh).toFixed(1)}catch(e){}}
 setInterval(function(){if(document.getElementById("navigate-pane")&&document.getElementById("navigate-pane").style.display!=="none")navUpdateLiveSummary()},10000);

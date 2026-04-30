@@ -29,6 +29,60 @@ const CACHE_FILE       = path.join(__dirname, "car_props_cache.json");
 const HISTORY_FILE     = path.join(__dirname, "car_props_history.json");
 const HISTORY_MAX_ROWS = 20_000;
 
+// ── ABRP OAuth / token storage ──
+const ABRP_CLIENT_ID  = "SEALION 7 PILOT";
+const ABRP_TOKEN_FILE = path.join(__dirname, "abrp_token.json");
+let ABRP_TOKEN = "";
+let ABRP_USER  = null;
+
+function loadAbrpToken() {
+  try {
+    if (fs.existsSync(ABRP_TOKEN_FILE)) {
+      const data = JSON.parse(fs.readFileSync(ABRP_TOKEN_FILE, "utf8"));
+      ABRP_TOKEN = data.access_token || data.token || "";
+      ABRP_USER  = data.user || null;
+    }
+  } catch(e) { console.warn("Failed to load ABRP token:", e.message); }
+}
+
+function saveAbrpToken(token, user = ABRP_USER) {
+  ABRP_TOKEN = token || "";
+  ABRP_USER = user || null;
+  try {
+    if (ABRP_TOKEN) fs.writeFileSync(ABRP_TOKEN_FILE, JSON.stringify({ access_token: ABRP_TOKEN, user: ABRP_USER, savedAt: Date.now() }, null, 2));
+    else if (fs.existsSync(ABRP_TOKEN_FILE)) fs.unlinkSync(ABRP_TOKEN_FILE);
+  } catch(e) { console.warn("Failed to save ABRP token:", e.message); }
+}
+
+function httpsJsonGet(fullUrl) {
+  return new Promise((resolve, reject) => {
+    require("https").get(fullUrl, { headers: { "User-Agent": "SEALION 7 PILOT" } }, (r) => {
+      let body = "";
+      r.on("data", c => body += c);
+      r.on("end", () => {
+        try { resolve(JSON.parse(body)); }
+        catch(e) { reject(new Error(body || e.message)); }
+      });
+    }).on("error", reject);
+  });
+}
+
+async function fetchAbrpUserInfo(token) {
+  if (!token) return null;
+  try {
+    const meUrl = "https://api.iternio.com/1/oauth/me?access_token=" + encodeURIComponent(token);
+    const data = await httpsJsonGet(meUrl);
+    if (data && !data.error) {
+      ABRP_USER = data;
+      saveAbrpToken(token, data);
+      return data;
+    }
+  } catch(e) { console.warn("ABRP user info failed:", e.message); }
+  return null;
+}
+
+loadAbrpToken();
+
 let carPropsCache     = readJsonFile(CACHE_FILE, {});
 let carPropsHistory   = normalizeHistory(readJsonFile(HISTORY_FILE, []));
 let carPollRunning    = false;
@@ -637,10 +691,108 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── ABRP status / OAuth callback ──
+  if (req.method === "GET" && pathname === "/abrp/status") {
+    if (ABRP_TOKEN && !ABRP_USER) await fetchAbrpUserInfo(ABRP_TOKEN);
+    const redirectUri = `${req.headers["x-forwarded-proto"] || "http"}://${req.headers.host}/oauth/callback`;
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      connected: !!ABRP_TOKEN,
+      client_id: ABRP_CLIENT_ID,
+      redirect_uri: redirectUri,
+      user: ABRP_USER || null,
+      vehicle_name: ABRP_USER?.vehicle_name || "",
+      vehicle_typecode: ABRP_USER?.vehicle_typecode || ""
+    }));
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/oauth/callback") {
+    const code = parsed.query.auth_code || parsed.query.code;
+    if (!code) {
+      res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+      res.end("<h2>SEALION 7 PILOT</h2><p>Missing ABRP auth_code.</p>");
+      return;
+    }
+    try {
+      const tokenUrl = "https://api.iternio.com/1/oauth/token?client_id=" + encodeURIComponent(ABRP_CLIENT_ID) + "&code=" + encodeURIComponent(code);
+      const data = await httpsJsonGet(tokenUrl);
+      if (!data.access_token) throw new Error(JSON.stringify(data));
+      saveAbrpToken(data.access_token);
+      await fetchAbrpUserInfo(data.access_token);
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>ABRP Connected</title><style>body{background:#080c10;color:#e8f0f8;font-family:system-ui;padding:32px}a{color:#00e5ff}</style></head><body><h2>✅ Connected to ABRP</h2><p>SEALION 7 PILOT is connected${ABRP_USER?.vehicle_name ? " to <b>" + ABRP_USER.vehicle_name + "</b>" : ""}.</p><p>You can close this page or return to the app.</p><script>setTimeout(()=>{location.href='/'},2500)</script></body></html>`);
+    } catch(e) {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(`<h2>ABRP OAuth failed</h2><pre>${String(e.message).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</pre>`);
+    }
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/abrp-oauth-token") {
+    const code = parsed.query.auth_code || parsed.query.code;
+    const clientId = parsed.query.client_id || ABRP_CLIENT_ID;
+    if (!code) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: "Missing auth_code" }));
+      return;
+    }
+    try {
+      const tokenUrl = "https://api.iternio.com/1/oauth/token?client_id=" + encodeURIComponent(clientId) + "&code=" + encodeURIComponent(code);
+      const data = await httpsJsonGet(tokenUrl);
+      if (data.access_token) {
+        saveAbrpToken(data.access_token);
+        await fetchAbrpUserInfo(data.access_token);
+      }
+      res.writeHead(200);
+      res.end(JSON.stringify(data));
+    } catch(e) {
+      res.writeHead(200);
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/abrp-oauth-me") {
+    const token = parsed.query.token || ABRP_TOKEN;
+    if (!token) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: "Missing token" }));
+      return;
+    }
+    const data = await fetchAbrpUserInfo(token);
+    res.writeHead(200);
+    res.end(JSON.stringify(data || { error: "Could not retrieve ABRP user information" }));
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/abrp-token") {
+    const body = await parseBody(req);
+    const token = (body.token || "").trim();
+    if (!token) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ success: false, error: "Missing token" }));
+      return;
+    }
+    saveAbrpToken(token);
+    await fetchAbrpUserInfo(token);
+    res.writeHead(200);
+    res.end(JSON.stringify({ success: true, connected: true, user: ABRP_USER }));
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/abrp/logout") {
+    saveAbrpToken("");
+    res.writeHead(200);
+    res.end(JSON.stringify({ success: true, connected: false }));
+    return;
+  }
+
   // ── POST /abrp — push live data to ABRP ──
   if (req.method === "POST" && pathname === "/abrp") {
     const body = await parseBody(req);
-    const { token, serial } = body;
+    const { serial } = body;
+    const token = body.token || ABRP_TOKEN;
     if (!token) {
       res.writeHead(400);
       res.end(JSON.stringify({ success: false, output: "Missing ABRP token" }));
@@ -764,77 +916,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── GET /abrp-oauth-token — exchange auth_code for access_token ──
-  if (req.method === "GET" && pathname === "/abrp-oauth-token") {
-    const code = parsed.query.auth_code || parsed.query.code;
-    const clientId = parsed.query.client_id || process.env.ABRP_CLIENT_ID || "";
-    const clientSecret = parsed.query.client_secret || process.env.ABRP_API_KEY || "";
-    if (!code) {
-      res.writeHead(400);
-      res.end(JSON.stringify({ error: "Missing auth_code" }));
-      return;
-    }
-    if (!clientId || !clientSecret) {
-      res.writeHead(400);
-      res.end(JSON.stringify({ error: "Missing client_id or client_secret / API key" }));
-      return;
-    }
-    try {
-      const https = require("https");
-      const tokenUrl = "https://api.iternio.com/1/oauth/token?client_id=" + encodeURIComponent(clientId) + "&client_secret=" + encodeURIComponent(clientSecret) + "&code=" + encodeURIComponent(code);
-      const data = await new Promise((resolve, reject) => {
-        https.get(tokenUrl, { headers: { "User-Agent": "Sealion7-ADB-Shell" } }, (r) => {
-          let body = "";
-          r.on("data", c => body += c);
-          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(new Error(body || e.message)); } });
-        }).on("error", reject);
-      });
-      res.writeHead(200);
-      res.end(JSON.stringify(data));
-    } catch(e) {
-      res.writeHead(200);
-      res.end(JSON.stringify({ error: e.message }));
-    }
-    return;
-  }
-
-  // ── GET /abrp-oauth-me — get user info from access_token ──
-  if (req.method === "GET" && pathname === "/abrp-oauth-me") {
-    const token = parsed.query.token;
-    const apiKey = parsed.query.api_key || process.env.ABRP_API_KEY || "";
-    if (!token) {
-      res.writeHead(400);
-      res.end(JSON.stringify({ error: "Missing token" }));
-      return;
-    }
-    if (!apiKey) {
-      res.writeHead(400);
-      res.end(JSON.stringify({ error: "Missing api_key" }));
-      return;
-    }
-    try {
-      const https = require("https");
-      const meUrl = "https://api.iternio.com/1/oauth/me?access_token=" + encodeURIComponent(token) + "&api_key=" + encodeURIComponent(apiKey);
-      const data = await new Promise((resolve, reject) => {
-        https.get(meUrl, { headers: { "User-Agent": "Sealion7-ADB-Shell" } }, (r) => {
-          let body = "";
-          r.on("data", c => body += c);
-          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(new Error(body || e.message)); } });
-        }).on("error", reject);
-      });
-      res.writeHead(200);
-      res.end(JSON.stringify(data));
-    } catch(e) {
-      res.writeHead(200);
-      res.end(JSON.stringify({ error: e.message }));
-    }
-    return;
-  }
-
   // ── POST /abrp-plan — send plan to ABRP account (syncs to mobile app) ──
   if (req.method === "POST" && pathname === "/abrp-plan") {
     const body = await parseBody(req);
-    const { token, destinations } = body;
+    const { destinations } = body;
+    const token = body.token || ABRP_TOKEN;
     if (!token || !destinations) {
       res.writeHead(400);
       res.end(JSON.stringify({ success: false, error: "Missing token or destinations" }));
