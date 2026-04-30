@@ -2114,25 +2114,60 @@ async function abrpHandleReturnedAuthCode() {
     return false;
   }
 
-  console.log('Handling returned auth code, exchanging with server...');
-  abrpSetStatus("⟳ Exchanging ABRP auth code…", "var(--accent)");
+  console.log('📍 OAuth code found:', authCode.substring(0, 10) + '...');
+  abrpSetStatus("⟳ Exchanging code with ABRP…", "var(--accent)");
+  
   try {
-    const res = await fetch(SERVER + "/abrp-oauth-token?code=" + encodeURIComponent(authCode) + "&client_id=" + encodeURIComponent(ABRP_CLIENT_ID), { cache: 'no-store' });
-    const data = await res.json();
-    if (!data.access_token) throw new Error(data.error || JSON.stringify(data));
+    // ✅ FIX: Call ABRP directly, not backend
+    console.log('🔄 Exchanging code directly with ABRP servers...');
+    
+    const formData = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: authCode,
+      client_id: ABRP_CLIENT_ID,
+      redirect_uri: abrpGetRedirectUri()
+    });
+    
+    const response = await fetch('https://api.iternio.com/1/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: formData.toString(),
+      cache: 'no-store'
+    });
 
-    console.log('ABRP token received, storing...');
+    const data = await response.json();
+    
+    console.log('📤 ABRP response status:', response.status);
+    
+    if (!response.ok || data.error) {
+      throw new Error(data.error_description || data.error || 'HTTP ' + response.status);
+    }
+
+    if (!data.access_token) {
+      throw new Error('No access_token in response: ' + JSON.stringify(data));
+    }
+
+    console.log('✅ Successfully got access token from ABRP');
+
+    // Store token
     abrpToken = data.access_token;
     localStorage.setItem("abrpToken", abrpToken);
     const tokenInput = document.getElementById("abrp-token");
     if (tokenInput) tokenInput.value = abrpToken;
 
-    // Remove the one-time OAuth code from the browser URL after successful exchange.
+    // Remove the code from URL
     window.history.replaceState({}, "", window.location.pathname);
+    
+    // Refresh status and fetch user info
     await abrpRefreshStatus();
+    console.log('✅ OAuth exchange complete!');
     return true;
+    
   } catch(e) {
-    console.error('ABRP auth code handling error:', e);
+    console.error('❌ OAuth exchange error:', e.message);
     localStorage.setItem("abrpOAuthError", String(e.message || e));
     abrpSetStatus("✗ OAuth failed: " + e.message, "var(--red)");
     return false;
