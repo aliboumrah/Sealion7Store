@@ -933,8 +933,14 @@ body.history-active #metrics-panel { display:flex; }
     const code = params.get('code');
     if (!code) return;
 
-    console.log('🔐 ABRP OAuth: code found in redirect URL, exchanging with ABRP...');
+    console.log('🔐 ABRP OAuth: code found in redirect URL:', code.substring(0, 15) + '...');
+
+    // ── Save code immediately before ANYTHING can clean the URL ──
+    localStorage.setItem('abrpOAuthPendingCode', code);
     localStorage.setItem('abrpOAuthStatus', 'exchanging');
+
+    // Clean the URL right away (cosmetic — code is safely stored above)
+    window.history.replaceState({}, document.title, window.location.pathname);
 
     // Exchange code directly with ABRP (frontend-only, no backend needed)
     const formData = new URLSearchParams({
@@ -958,12 +964,10 @@ body.history-active #metrics-panel { display:flex; }
         try {
           data = JSON.parse(rawText);
         } catch(e) {
-          // Try extracting JSON object from the response
           const jsonMatch = rawText.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
             try { data = JSON.parse(jsonMatch[0]); } catch(e2) {}
           }
-          // Try extracting a bare token string (some APIs return just the token)
           const tokenMatch = rawText.match(/[a-zA-Z0-9\-_]{20,}/);
           if (!data.access_token && tokenMatch) {
             data = { access_token: tokenMatch[0] };
@@ -975,15 +979,13 @@ body.history-active #metrics-panel { display:flex; }
 
         console.log('✅ ABRP OAuth: got access token, saving...');
 
-        // 1. Save to localStorage (same key the app already uses)
+        // Save token + clear pending code
         localStorage.setItem('abrpToken', token);
         localStorage.setItem('abrpOAuthStatus', 'connected');
+        localStorage.removeItem('abrpOAuthPendingCode');
         localStorage.removeItem('abrpOAuthError');
 
-        // 2. Clean code from URL
-        window.history.replaceState({}, document.title, window.location.pathname);
-
-        // 3. Apply token to app state + save to backend + update UI
+        // Apply token to app state + save to backend + update UI
         function applyToken() {
           // Update the in-memory variable the app uses
           if (typeof abrpToken !== 'undefined') abrpToken = token;
@@ -992,24 +994,16 @@ body.history-active #metrics-panel { display:flex; }
           const input = document.getElementById('abrp-token');
           if (input) input.value = token;
 
-          // Save to backend directly (same logic as the Save button)
+          // Save to backend directly
           const SERVER_URL = (localStorage.getItem('serverUrl') || 'http://192.168.1.20:3000').replace(/\/$/, '');
           fetch(SERVER_URL + '/abrp-token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token })
           })
-            .then(r => r.json())
-            .then(() => {
-              console.log('✅ Token saved to backend');
-              // Switch to settings tab so user sees the connected state
-              if (typeof window.switchTab === 'function') window.switchTab('settings');
-              // Refresh ABRP status UI
-              if (typeof window.abrpRefreshStatus === 'function') window.abrpRefreshStatus();
-            })
-            .catch(() => {
-              // Backend offline — still update UI from localStorage
-              console.warn('⚠️ Backend offline, token saved locally only');
+            .catch(() => console.warn('⚠️ Backend offline, token saved locally only'))
+            .finally(() => {
+              // Switch to settings tab and refresh UI
               if (typeof window.switchTab === 'function') window.switchTab('settings');
               if (typeof window.abrpRefreshStatus === 'function') window.abrpRefreshStatus();
             });
@@ -1018,7 +1012,6 @@ body.history-active #metrics-panel { display:flex; }
         if (document.readyState === 'loading') {
           document.addEventListener('DOMContentLoaded', applyToken);
         } else {
-          // DOM ready but other scripts may not be — wait one tick
           setTimeout(applyToken, 300);
         }
       })
@@ -1026,8 +1019,7 @@ body.history-active #metrics-panel { display:flex; }
         console.error('❌ ABRP OAuth exchange failed:', err);
         localStorage.setItem('abrpOAuthStatus', 'failed');
         localStorage.setItem('abrpOAuthError', String(err && err.message ? err.message : err));
-        // Clean URL anyway
-        window.history.replaceState({}, document.title, window.location.pathname);
+        localStorage.removeItem('abrpOAuthPendingCode');
       });
   } catch (e) {
     console.error('Early ABRP OAuth handler error:', e);
