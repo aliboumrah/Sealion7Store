@@ -638,8 +638,9 @@
   <!-- History pane -->
   <div id="history-pane" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);">
     <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;">
-      <select id="hist-metric" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:8px;outline:none;cursor:pointer;">
-        <option value="0x21604402">🔋 SOC %</option>
+      <select id="hist-metric" multiple size="4" title="Hold Ctrl to select multiple metrics"
+        style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:8px;outline:none;cursor:pointer;min-width:220px;">
+        <option value="0x21604402" selected>🔋 SOC %</option>
         <option value="0x21604421">⚡ EV kWh</option>
         <option value="0x21604601">🚗 Speed km/h</option>
         <option value="0x21404401">📍 EV Range km</option>
@@ -653,6 +654,16 @@
         <option value="0x2160801f">🔵 Tyre RL psi</option>
         <option value="0x21608020">🔵 Tyre RR psi</option>
       </select>
+      <select id="hist-time-filter" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 10px;border-radius:8px;outline:none;cursor:pointer;">
+        <option value="all">All time</option>
+        <option value="15m">Last 15 min</option>
+        <option value="1h">Last 1 hour</option>
+        <option value="6h">Last 6 hours</option>
+        <option value="24h">Last 24 hours</option>
+        <option value="custom">Custom</option>
+      </select>
+      <input id="hist-from" type="datetime-local" style="display:none;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:5px 8px;border-radius:8px;outline:none;" />
+      <input id="hist-to" type="datetime-local" style="display:none;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:5px 8px;border-radius:8px;outline:none;" />
       <button id="hist-refresh-btn" class="hdr-btn">⟳ Refresh</button>
       <button id="hist-dl-history-btn" class="hdr-btn" title="Download history JSON">⬇ History</button>
       <button id="hist-dl-cache-btn" class="hdr-btn" title="Download full property cache">⬇ Cache</button>
@@ -660,7 +671,7 @@
     </div>
     <div id="hist-chart-wrap" style="flex:1;overflow:hidden;padding:16px;display:flex;flex-direction:column;">
       <canvas id="hist-canvas" style="flex:1;width:100%;"></canvas>
-      <div id="hist-empty" style="color:var(--muted);font-size:12px;text-align:center;padding:40px;">No history yet — server polls every 60s</div>
+      <div id="hist-empty" style="color:var(--muted);font-size:12px;text-align:center;padding:40px;">No history yet — server polls every 10s</div>
     </div>
   </div>
 
@@ -2460,95 +2471,180 @@ async function loadHistory() {
   }
 }
 
+function getSelectedHistMetrics() {
+  const select = document.getElementById("hist-metric");
+  const selected = Array.from(select.selectedOptions || []).map(o => ({ id: o.value, label: o.textContent.trim() }));
+  if (selected.length) return selected;
+  const first = select.options[0];
+  if (first) {
+    first.selected = true;
+    return [{ id: first.value, label: first.textContent.trim() }];
+  }
+  return [];
+}
+
+function getFilteredHistData() {
+  const filter = document.getElementById("hist-time-filter")?.value || "all";
+  const now = Date.now();
+  let from = null;
+  let to = null;
+
+  if (filter === "15m") from = now - 15 * 60 * 1000;
+  else if (filter === "1h") from = now - 60 * 60 * 1000;
+  else if (filter === "6h") from = now - 6 * 60 * 60 * 1000;
+  else if (filter === "24h") from = now - 24 * 60 * 60 * 1000;
+  else if (filter === "custom") {
+    const fromVal = document.getElementById("hist-from")?.value;
+    const toVal = document.getElementById("hist-to")?.value;
+    from = fromVal ? new Date(fromVal).getTime() : null;
+    to = toVal ? new Date(toVal).getTime() : null;
+  }
+
+  return histData.filter(s => {
+    if (!s.ts) return false;
+    if (from && s.ts < from) return false;
+    if (to && s.ts > to) return false;
+    return true;
+  });
+}
+
+function updateHistoryCustomInputs() {
+  const show = document.getElementById("hist-time-filter").value === "custom";
+  document.getElementById("hist-from").style.display = show ? "" : "none";
+  document.getElementById("hist-to").style.display = show ? "" : "none";
+}
+
+function metricValueFromSnapshot(snapshot, id) {
+  const raw = snapshot[id];
+  if (raw === undefined || raw === null) return null;
+  const val = Array.isArray(raw) ? raw[0] : raw;
+  const num = Number(val);
+  return Number.isFinite(num) ? num : null;
+}
+
 function renderHistChart() {
   const canvas  = document.getElementById("hist-canvas");
   const empty   = document.getElementById("hist-empty");
-  const metricId = document.getElementById("hist-metric").value;
+  const status  = document.getElementById("hist-status");
+  const metrics = getSelectedHistMetrics();
+  const source  = getFilteredHistData();
 
-  if (!histData.length) { empty.style.display = ""; canvas.style.display = "none"; return; }
+  if (!histData.length || !source.length || !metrics.length) {
+    empty.textContent = histData.length ? "No history for this time filter" : "No history yet — server polls every 10s";
+    empty.style.display = "";
+    canvas.style.display = "none";
+    return;
+  }
 
-  const points = histData
-    .filter(s => s[metricId] !== undefined && s[metricId] !== null)
-    .map(s => ({ ts: s.ts, val: Array.isArray(s[metricId]) ? s[metricId][0] : s[metricId] }));
+  const series = metrics.map(metric => {
+    const points = source
+      .map(s => ({ ts: s.ts, val: metricValueFromSnapshot(s, metric.id) }))
+      .filter(p => p.val !== null);
+    return { ...metric, points };
+  }).filter(s => s.points.length > 0);
 
-  if (!points.length) { empty.style.display = ""; canvas.style.display = "none"; return; }
+  if (!series.length) {
+    empty.textContent = "Selected metrics have no values in this time range";
+    empty.style.display = "";
+    canvas.style.display = "none";
+    return;
+  }
+
   empty.style.display = "none";
   canvas.style.display = "";
 
   const ctx = canvas.getContext("2d");
-  canvas.width  = canvas.offsetWidth  * window.devicePixelRatio;
-  canvas.height = canvas.offsetHeight * window.devicePixelRatio;
-  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.max(1, canvas.offsetWidth)  * dpr;
+  canvas.height = Math.max(1, canvas.offsetHeight) * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const W = canvas.offsetWidth, H = canvas.offsetHeight;
 
-  const vals = points.map(p => p.val);
-  const minV = Math.min(...vals), maxV = Math.max(...vals);
+  const allVals = series.flatMap(s => s.points.map(p => p.val));
+  const allTs   = series.flatMap(s => s.points.map(p => p.ts));
+  const minV = Math.min(...allVals), maxV = Math.max(...allVals);
+  const minTs = Math.min(...allTs), maxTs = Math.max(...allTs);
   const range = maxV - minV || 1;
-  const pad = { top: 20, bottom: 30, left: 45, right: 16 };
-  const chartW = W - pad.left - pad.right;
-  const chartH = H - pad.top  - pad.bottom;
+  const timeRange = maxTs - minTs || 1;
+  const pad = { top: 22, bottom: 52, left: 55, right: 20 };
+  const chartW = Math.max(10, W - pad.left - pad.right);
+  const chartH = Math.max(10, H - pad.top  - pad.bottom);
+  const palette = ["#00c8d4", "#00d48a", "#ffb830", "#a078f0", "#ff7a30", "#8ab4d0", "#ff4d6a", "#ffffff"];
 
   ctx.clearRect(0, 0, W, H);
 
-  // Grid lines
+  // Grid + y-axis labels
   ctx.strokeStyle = "rgba(255,255,255,0.06)";
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
     const y = pad.top + (chartH / 4) * i;
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
     const label = (maxV - (range / 4) * i).toFixed(1);
-    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
     ctx.font = "10px monospace";
     ctx.textAlign = "right";
-    ctx.fillText(label, pad.left - 4, y + 4);
+    ctx.fillText(label, pad.left - 6, y + 4);
   }
 
-  // Line
-  ctx.beginPath();
-  ctx.strokeStyle = "var(--accent)";
-  ctx.lineWidth = 2;
-  points.forEach((p, i) => {
-    const x = pad.left + (i / (points.length - 1 || 1)) * chartW;
-    const y = pad.top  + (1 - (p.val - minV) / range) * chartH;
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  });
-  ctx.stroke();
+  function xFor(ts) { return pad.left + ((ts - minTs) / timeRange) * chartW; }
+  function yFor(val) { return pad.top + (1 - (val - minV) / range) * chartH; }
 
-  // Fill under line
-  const lastX = pad.left + chartW, firstX = pad.left;
-  ctx.lineTo(lastX, pad.top + chartH);
-  ctx.lineTo(firstX, pad.top + chartH);
-  ctx.closePath();
-  ctx.fillStyle = "rgba(0,200,212,0.08)";
-  ctx.fill();
+  // Draw each metric series
+  series.forEach((s, idx) => {
+    const color = palette[idx % palette.length];
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    s.points.forEach((p, i) => {
+      const x = xFor(p.ts), y = yFor(p.val);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    const last = s.points[s.points.length - 1];
+    const lx = xFor(last.ts), ly = yFor(last.val);
+    ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+    ctx.fillStyle = color;
+    ctx.font = "bold 10px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText(last.val.toFixed(1), Math.min(lx + 6, W - 42), ly - 6);
+  });
 
   // Time labels
-  ctx.fillStyle = "rgba(255,255,255,0.3)";
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
   ctx.font = "10px monospace";
   ctx.textAlign = "center";
-  [0, Math.floor(points.length/2), points.length-1].forEach(i => {
-    if (!points[i]) return;
-    const x = pad.left + (i / (points.length - 1 || 1)) * chartW;
-    const t = new Date(points[i].ts).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
-    ctx.fillText(t, x, H - 6);
+  [minTs, minTs + timeRange / 2, maxTs].forEach((ts) => {
+    const x = xFor(ts);
+    const t = new Date(ts).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+    ctx.fillText(t, x, H - 8);
   });
 
-  // Current value dot
-  const last = points[points.length - 1];
-  const lx = pad.left + chartW;
-  const ly = pad.top + (1 - (last.val - minV) / range) * chartH;
-  ctx.beginPath();
-  ctx.arc(lx, ly, 5, 0, Math.PI * 2);
-  ctx.fillStyle = "var(--accent)";
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.font = "bold 11px monospace";
-  ctx.textAlign = "right";
-  ctx.fillText(last.val.toFixed(1), lx - 8, ly - 8);
+  // Legend
+  let lx = pad.left;
+  let ly = H - 34;
+  ctx.font = "10px monospace";
+  ctx.textAlign = "left";
+  series.forEach((s, idx) => {
+    const color = palette[idx % palette.length];
+    const label = s.label.replace(/^[^a-zA-Z0-9]+\s*/, "").slice(0, 22);
+    const width = ctx.measureText(label).width + 26;
+    if (lx + width > W - pad.right) { lx = pad.left; ly += 14; }
+    ctx.fillStyle = color;
+    ctx.fillRect(lx, ly - 8, 10, 2);
+    ctx.fillText(label, lx + 14, ly - 4);
+    lx += width;
+  });
+
+  const selectedNames = series.map(s => s.label.replace(/^[^a-zA-Z0-9]+\s*/, "")).join(", ");
+  if (status) status.textContent = `${source.length}/${histData.length} snapshots · ${series.length} metric(s) · ${selectedNames}`;
 }
 
 document.getElementById("hist-refresh-btn").addEventListener("click", loadHistory);
 document.getElementById("hist-metric").addEventListener("change", renderHistChart);
+document.getElementById("hist-time-filter").addEventListener("change", () => { updateHistoryCustomInputs(); renderHistChart(); });
+document.getElementById("hist-from").addEventListener("change", renderHistChart);
+document.getElementById("hist-to").addEventListener("change", renderHistChart);
 window.addEventListener("resize", () => { if (histData.length) renderHistChart(); });
 
 function downloadJson(data, filename) {
