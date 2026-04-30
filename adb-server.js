@@ -81,6 +81,22 @@ async function fetchAbrpUserInfo(token) {
   return null;
 }
 
+function getPublicBaseUrl(req) {
+  return `${req.headers["x-forwarded-proto"] || "http"}://${req.headers.host}`;
+}
+
+function buildAbrpAuthUrl(req) {
+  const redirectUri = getPublicBaseUrl(req) + "/oauth/callback";
+  const state = Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const scope = "get_telemetry set_telemetry get_plan";
+  return "https://abetterrouteplanner.com/oauth/auth" +
+    "?client_id=" + encodeURIComponent(ABRP_CLIENT_ID) +
+    "&scope=" + encodeURIComponent(scope) +
+    "&response_type=code" +
+    "&redirect_uri=" + encodeURIComponent(redirectUri) +
+    "&state=" + encodeURIComponent(state);
+}
+
 loadAbrpToken();
 
 let carPropsCache     = readJsonFile(CACHE_FILE, {});
@@ -694,12 +710,13 @@ const server = http.createServer(async (req, res) => {
   // ── ABRP status / OAuth callback ──
   if (req.method === "GET" && pathname === "/abrp/status") {
     if (ABRP_TOKEN && !ABRP_USER) await fetchAbrpUserInfo(ABRP_TOKEN);
-    const redirectUri = `${req.headers["x-forwarded-proto"] || "http"}://${req.headers.host}/oauth/callback`;
+    const redirectUri = getPublicBaseUrl(req) + "/oauth/callback";
     res.writeHead(200);
     res.end(JSON.stringify({
       connected: !!ABRP_TOKEN,
       client_id: ABRP_CLIENT_ID,
       redirect_uri: redirectUri,
+      auth_start_url: getPublicBaseUrl(req) + "/oauth/start",
       user: ABRP_USER || null,
       vehicle_name: ABRP_USER?.vehicle_name || "",
       vehicle_typecode: ABRP_USER?.vehicle_typecode || ""
@@ -707,11 +724,23 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && pathname === "/oauth/start") {
+    res.writeHead(302, { Location: buildAbrpAuthUrl(req) });
+    res.end();
+    return;
+  }
+
   if (req.method === "GET" && pathname === "/oauth/callback") {
     const code = parsed.query.auth_code || parsed.query.code;
+    const oauthError = parsed.query.error || parsed.query.error_description;
     if (!code) {
-      res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-      res.end("<h2>SEALION 7 PILOT</h2><p>Missing ABRP auth_code.</p>");
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      const configured = getPublicBaseUrl(req) + "/oauth/callback";
+      const msg = oauthError
+        ? "ABRP returned an OAuth error: " + String(oauthError)
+        : "No auth_code/code was present in the callback URL. Start login from Settings or use the button below.";
+      const esc = (x) => String(x).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+      res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>SEALION 7 PILOT</title><style>body{background:#080c10;color:#e8f0f8;font-family:system-ui;padding:32px;line-height:1.5}a,.btn{color:#001;background:#00e5ff;padding:12px 18px;border-radius:12px;text-decoration:none;display:inline-block;margin-top:12px}code{color:#00e5ff}</style></head><body><h2>SEALION 7 PILOT</h2><p>${esc(msg)}</p><p>Configured redirect URI:</p><code>${esc(configured)}</code><br><a class="btn" href="/oauth/start">Login with ABRP again</a></body></html>`);
       return;
     }
     try {
@@ -721,10 +750,10 @@ const server = http.createServer(async (req, res) => {
       saveAbrpToken(data.access_token);
       await fetchAbrpUserInfo(data.access_token);
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>ABRP Connected</title><style>body{background:#080c10;color:#e8f0f8;font-family:system-ui;padding:32px}a{color:#00e5ff}</style></head><body><h2>✅ Connected to ABRP</h2><p>SEALION 7 PILOT is connected${ABRP_USER?.vehicle_name ? " to <b>" + ABRP_USER.vehicle_name + "</b>" : ""}.</p><p>You can close this page or return to the app.</p><script>setTimeout(()=>{location.href='/'},2500)</script></body></html>`);
+      res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>ABRP Connected</title><style>body{background:#080c10;color:#e8f0f8;font-family:system-ui;padding:32px}a{color:#00e5ff}</style></head><body><h2>✅ Connected to ABRP</h2><p>SEALION 7 PILOT is connected${ABRP_USER?.vehicle_name ? " to <b>" + ABRP_USER.vehicle_name + "</b>" : ""}.</p><p>Returning to the app...</p><script>setTimeout(()=>{location.href='/'},1500)</script></body></html>`);
     } catch(e) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(`<h2>ABRP OAuth failed</h2><pre>${String(e.message).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</pre>`);
+      res.end(`<h2>ABRP OAuth failed</h2><pre>${String(e.message).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</pre><p><a href="/oauth/start">Try again</a></p>`);
     }
     return;
   }

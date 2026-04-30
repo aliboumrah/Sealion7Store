@@ -2016,16 +2016,8 @@ async function abrpHandleReturnedAuthCode() {
 }
 
 function abrpStartOAuthLogin() {
-  const state = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
-  localStorage.setItem("abrpOAuthState", state);
-  const scope = "get_telemetry set_telemetry get_plan";
-  const authUrl = "https://abetterrouteplanner.com/oauth/auth" +
-    "?client_id=" + encodeURIComponent(ABRP_CLIENT_ID) +
-    "&scope=" + encodeURIComponent(scope) +
-    "&response_type=code" +
-    "&redirect_uri=" + encodeURIComponent(abrpGetRedirectUri()) +
-    "&state=" + encodeURIComponent(state);
-  window.location.href = authUrl;
+  // Let the Node server build the ABRP OAuth URL. This avoids mismatched redirect_uri values.
+  window.location.href = SERVER.replace(/\/$/, "") + "/oauth/start";
 }
 
 document.getElementById("abrp-oauth-btn")?.addEventListener("click", abrpStartOAuthLogin);
