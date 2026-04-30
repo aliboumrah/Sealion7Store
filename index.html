@@ -1244,9 +1244,13 @@ async function installFromGitHub(app, logEl, btn) {
     return;
   }
   btn.disabled = true;
-  setLog(logEl, `⟳ Downloading ${app.filename} from GitHub…`, "running");
+  // Use Google Drive direct download URL if driveId available
+  const downloadUrl = app.driveId
+    ? `https://www.googleapis.com/drive/v3/files/${app.driveId}?alt=media&key=${GDRIVE_API_KEY}`
+    : GITHUB_RAW + encodeURIComponent(app.filename);
+  setLog(logEl, `⟳ Downloading ${app.filename} from ${app.driveId ? "Google Drive" : "GitHub"}…`, "running");
   try {
-    const res = await fetch(GITHUB_RAW + encodeURIComponent(app.filename));
+    const res = await fetch(downloadUrl);
     if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
     const total = parseInt(res.headers.get("content-length") || "0");
     // Stream with progress
@@ -2322,14 +2326,45 @@ function navRender(places, query) {
 
       function openAbrp(startLat, startLon) {
         var destinations = startLat !== null
-          ? JSON.stringify([
+          ? [
               {"address": "Current Location", "lat": startLat, "lon": startLon},
               {"address": name, "lat": lat, "lon": lon}
-            ])
-          : JSON.stringify([{"address": name, "lat": lat, "lon": lon}]);
+            ]
+          : [{"address": name, "lat": lat, "lon": lon}];
 
+        var token = localStorage.getItem("abrpToken");
+
+        if (token) {
+          // Send plan to ABRP account via API → syncs to mobile app automatically
+          navStatus("⟳ Sending plan to ABRP app…", "var(--accent)");
+          fetch(SERVER + "/abrp-plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: token, destinations: destinations })
+          })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data.success) {
+              navStatus("✓ Plan sent to ABRP app → " + name, "var(--green)");
+            } else {
+              // Fallback: open in browser if API fails
+              navStatus("⚠ API failed, opening browser… " + (data.error || ""), "var(--yellow)");
+              openAbrpBrowser(destinations);
+            }
+          })
+          .catch(function() {
+            openAbrpBrowser(destinations);
+          });
+        } else {
+          // No token — open in browser
+          navStatus("⚠ No ABRP token — opening browser (login in ABRP tab first)", "var(--yellow)");
+          openAbrpBrowser(destinations);
+        }
+      }
+
+      function openAbrpBrowser(destinations) {
         var params = new URLSearchParams({
-          destinations:   destinations,
+          destinations:   JSON.stringify(destinations),
           car_model:      "byd:sealion:25:82:rwd",
           charge_stops:   "optimal",
           allow_motorway: "true",
@@ -2337,15 +2372,7 @@ function navRender(places, query) {
           allow_ferry:    "true",
           allow_border:   "true",
         });
-
-        // Add token so plan syncs to mobile app (same ABRP account)
-        var token = localStorage.getItem("abrpToken");
-        if (token) params.set("token", token);
-
-        navStatus("✓ Opening ABRP → " + name, "var(--green)");
-        setTimeout(function() {
-          window.open("https://abetterrouteplanner.com/?" + params.toString(), "_blank");
-        }, 500);
+        window.open("https://abetterrouteplanner.com/?" + params.toString(), "_blank");
       }
 
       // Try browser geolocation first

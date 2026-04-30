@@ -247,32 +247,24 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── GET /store — fetch APK list from GitHub (server-side, no CORS) ──
+  // ── GET /store — fetch APK list from Google Drive public folder ──
   if (req.method === "GET" && pathname === "/store") {
+    const GDRIVE_FOLDER_ID = "11RoAclYjnDBdOxHfeUL5mAOUD5lEm3pq";
+    const GDRIVE_API_KEY   = "AIzaSyCv_ytxk3JHN_-ROab5CKWY_RGqGveCFGA";
     try {
       const https = require("https");
+      const q = encodeURIComponent(`'${GDRIVE_FOLDER_ID}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false`);
+      const path = `/drive/v3/files?q=${q}&key=${GDRIVE_API_KEY}&fields=files(id,name,size)&orderBy=name`;
       const data = await new Promise((resolve, reject) => {
-        const opts = {
-          hostname: "api.github.com",
-          path: "/repos/aliboumrah/Sealion7Store/contents",
-          headers: {
-            "User-Agent": "Sealion7-ADB-Shell",
-            "Accept": "application/vnd.github.v3+json"
-          }
-        };
-        https.get(opts, (r) => {
+        https.get({ hostname: "www.googleapis.com", path, headers: { "User-Agent": "Sealion7-ADB-Shell" } }, (r) => {
           let body = "";
           r.on("data", c => body += c);
-          r.on("end", () => {
-            try { resolve(JSON.parse(body)); }
-            catch(e) { reject(e); }
-          });
+          r.on("end", () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
         }).on("error", reject);
       });
-      const apks = Array.isArray(data)
-        ? data.filter(f => f.name.toLowerCase().endsWith(".apk"))
-              .map(f => ({ name: f.name, size: f.size }))
-        : [];
+      const apks = (data.files || [])
+        .filter(f => f.name.toLowerCase().endsWith(".apk"))
+        .map(f => ({ name: f.name, size: f.size || 0, driveId: f.id }));
       res.writeHead(200);
       res.end(JSON.stringify({ apks }));
     } catch(e) {
@@ -729,6 +721,69 @@ const server = http.createServer(async (req, res) => {
     } catch(e) {
       res.writeHead(200);
       res.end(JSON.stringify({ success: false, history: [], error: e.message }));
+    }
+    return;
+  }
+
+  // ── POST /abrp-plan — send plan to ABRP account (syncs to mobile app) ──
+  if (req.method === "POST" && pathname === "/abrp-plan") {
+    const body = await parseBody(req);
+    const { token, destinations } = body;
+    if (!token || !destinations) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ success: false, error: "Missing token or destinations" }));
+      return;
+    }
+    try {
+      const https = require("https");
+
+      // Build plan in correct ABRP API format
+      const plan = {
+        destinations: destinations.map(d => ({
+          location: {
+            type: "COORDINATES",
+            latitude:  d.lat,
+            longitude: d.lon,
+            name:      d.address || d.name || ""
+          }
+        })),
+        vehicle: {
+          identifier: {
+            type:  "TYPECODE",
+            value: "byd:sealion:25:82:rwd"
+          }
+        }
+      };
+
+      const planJson = JSON.stringify(plan);
+      const options = {
+        hostname: "api.iternio.com",
+        path:     "/1/plan/set",
+        method:   "POST",
+        headers:  {
+          "Content-Type":   "application/json",
+          "Authorization":  `Bearer ${token}`,
+          "Content-Length": Buffer.byteLength(planJson),
+          "User-Agent":     "Sealion7-ADB-Shell"
+        }
+      };
+
+      const data = await new Promise((resolve, reject) => {
+        const req2 = https.request(options, (r) => {
+          let body2 = "";
+          r.on("data", c => body2 += c);
+          r.on("end", () => { try { resolve(JSON.parse(body2)); } catch(e) { reject(e); } });
+        });
+        req2.on("error", reject);
+        req2.write(planJson);
+        req2.end();
+      });
+
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, result: data }));
+    } catch(e) {
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: false, error: e.message }));
     }
     return;
   }
