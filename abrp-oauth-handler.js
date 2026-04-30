@@ -217,6 +217,11 @@ console.log('🔐 ABRP OAuth Handler - Starting...');
       console.log('Token is saved. Reloading page to show connected status...');
       
       setTimeout(() => {
+        // Save the current tab before reload so it stays on Settings
+        try {
+          localStorage.setItem('activeTab', 'settings');
+        } catch(e) {}
+        
         window.location.reload();
       }, 1500);
       
@@ -261,23 +266,65 @@ console.log('🔐 ABRP OAuth Handler - Starting...');
   console.log('✅ ABRP OAuth Handler fully initialized');
   console.log('📊 Debug available at: window.debugABRPOAuth');
   
+  // ============================================================================
+  // CRITICAL: Handle tab switching - run handler when tab becomes visible
+  // ============================================================================
+  
+  // Listen for tab becoming visible (user switched back to this tab)
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+      console.log('👁️ Tab became visible - checking for OAuth code...');
+      setTimeout(() => window.handleOAuthRedirect(), 100);
+    }
+  });
+  
+  // Listen for window focus (user clicked on this window)
+  window.addEventListener('focus', function() {
+    console.log('🎯 Window focused - checking for OAuth code...');
+    setTimeout(() => window.handleOAuthRedirect(), 100);
+  });
+  
+  // Periodic check - in case OAuth happens while tab is hidden
+  setInterval(function() {
+    const code = window.getOAuthCode();
+    const isProcessing = localStorage.getItem('abrpOAuthProcessing');
+    const isConnected = localStorage.getItem('abrpOAuthStatus') === 'connected';
+    
+    if (code && !isProcessing && !isConnected) {
+      console.log('⏰ Periodic check found unprocessed code - handling...');
+      window.handleOAuthRedirect();
+    }
+  }, 2000); // Check every 2 seconds
+  
 })();
 
 /**
  * Debug in browser console:
  * 
- * // Check if code was found
+ * // Check if code was found in URL
  * window.getOAuthCode()
  * 
- * // Check token
+ * // Check token (should have access_token field)
  * localStorage.getItem('abrpToken')
  * 
- * // Check error
+ * // Check for errors
  * localStorage.getItem('abrpOAuthError')
  * 
- * // Check status
+ * // Check connection status
  * localStorage.getItem('abrpOAuthStatus')
  * 
- * // Manually trigger handler
+ * // Manually trigger OAuth handler
  * window.handleOAuthRedirect()
+ * 
+ * // If stuck, reset processing flag
+ * localStorage.removeItem('abrpOAuthProcessing');
+ * window.handleOAuthRedirect();
+ * 
+ * // Check all ABRP data
+ * console.log({
+ *   token: localStorage.getItem('abrpToken'),
+ *   user: localStorage.getItem('abrpUser'),
+ *   status: localStorage.getItem('abrpOAuthStatus'),
+ *   error: localStorage.getItem('abrpOAuthError')
+ * });
  */
