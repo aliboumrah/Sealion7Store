@@ -687,7 +687,7 @@
       <div style="font-size:28px;">🏪</div>
       <div>
         <div style="font-size:15px;font-weight:700;color:var(--text);">Sealion 7 App Store</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Apps sourced from <a href="https://github.com/aliboumrah/Sealion7Store" style="color:var(--blue);text-decoration:none;">github.com/aliboumrah/Sealion7Store</a></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Apps sourced from <a href="https://drive.google.com/drive/folders/11RoAclYjnDBdOxHfeUL5mAOUD5lEm3pq" style="color:var(--accent);text-decoration:none;">Google Drive</a></div>
       </div>
       <button class="hdr-btn" id="store-refresh-btn" style="margin-left:auto;">⟳ Refresh</button>
     </div>
@@ -1153,15 +1153,19 @@ document.getElementById("stop-btn").addEventListener("click", async () => {
 });
 
 // ── GitHub APK Store ──
-const GITHUB_RAW = "https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/";
-const GITHUB_API = "https://api.github.com/repos/aliboumrah/Sealion7Store/contents/";
+const GITHUB_RAW = "https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/"; // kept for start.sh downloads only
+
+// Google Drive public folder config
+const GDRIVE_FOLDER_ID = "11RoAclYjnDBdOxHfeUL5mAOUD5lEm3pq";
+const GDRIVE_API_KEY   = "AIzaSyCv_ytxk3JHN_-ROab5CKWY_RGqGveCFGA";
+const GDRIVE_DOWNLOAD  = (id) => `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${GDRIVE_API_KEY}`;
 
 // Icon/description hints for known APKs
 const APK_META = {
-  "appmanager": { icon: "🛠", name: "App Manager", desc: "Full-featured package manager for DiLink OS.", pkg: "io.github.muntashirakon.AppManager" },
-  "gbox":       { icon: "📦", name: "GBox",        desc: "Google Play services layer for DiLink OS.", pkg: "com.mgoogle.android.gms" },
-  "termux":     { icon: "📟", name: "Termux",      desc: "Terminal emulator and Linux environment.", pkg: "com.termux" },
-  "fdroid":     { icon: "🏪", name: "F-Droid",     desc: "Open source app repository.", pkg: "org.fdroid.fdroid" },
+  "appmanager": { icon: "🛠", name: "App Manager", desc: "Full-featured package manager for DiLink OS." },
+  "gbox":       { icon: "📦", name: "GBox",        desc: "Google Play services layer for DiLink OS." },
+  "termux":     { icon: "📟", name: "Termux",      desc: "Terminal emulator and Linux environment." },
+  "fdroid":     { icon: "🏪", name: "F-Droid",     desc: "Open source app repository." },
 };
 
 function apkMeta(filename) {
@@ -1169,45 +1173,25 @@ function apkMeta(filename) {
   for (const [key, meta] of Object.entries(APK_META)) {
     if (lower.includes(key)) return meta;
   }
-  // Generic fallback
   const name = filename.replace(/[-_]/g, " ").replace(/\.apk$/i, "").replace(/v[\d.]+/i, "").trim();
   return { icon: "📱", name, desc: filename };
 }
 
 async function fetchStoreApps() {
-  const ts = Date.now();
-
-  // Fetch the GitHub repo's JSON data API via a <script> tag trick
-  // GitHub exposes a JSON payload embedded in the HTML — no CORS needed
-  // We use an iframe + srcdoc approach via a Blob URL to read the page
-  // Simplest: use the raw GitHub API which allows cross-origin reads when
-  // fetched as 'no-cors' — but we can't read the body that way.
-
-  // Best working approach: GitHub's repo page rendered as text via fetch with mode:'no-cors'
-  // won't work. Instead use the GitHub "?raw=1" trick on a known manifest file.
-
-  // We maintain a apks.json file in the repo listing all APKs.
-  // This is the most reliable approach - pure static, no API, no CORS.
   try {
-    const res = await fetch(
-      `https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/apks.json?t=${ts}`
-    );
-    if (!res.ok) throw new Error(`apks.json ${res.status}`);
+    const q   = encodeURIComponent(`'${GDRIVE_FOLDER_ID}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false`);
+    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&key=${GDRIVE_API_KEY}&fields=files(id,name,size)&orderBy=name`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Drive API ${res.status}`);
     const data = await res.json();
-    if (Array.isArray(data) && data.length > 0) {
-      console.log("apks.json found", data.length, "APKs");
-      return data.map(f => ({
-        filename: typeof f === "string" ? f : f.filename,
-        size: f.size || 0,
-        ...apkMeta(typeof f === "string" ? f : f.filename)
-      }));
-    }
-    throw new Error("Empty apks.json");
+    const apks = (data.files || []).filter(f => f.name.toLowerCase().endsWith(".apk"));
+    if (!apks.length) throw new Error("No APKs in Drive folder");
+    console.log("Google Drive found", apks.length, "APKs");
+    return apks.map(f => ({ filename: f.name, size: f.size || 0, driveId: f.id, ...apkMeta(f.name) }));
   } catch(e) {
-    console.warn("apks.json failed:", e.message);
+    console.warn("Google Drive store failed:", e.message);
+    return [];
   }
-
-  return [];
 }
 
 function setLog(el, text, state) { el.textContent = text; el.className = `install-log show ${state}`; }
@@ -1241,10 +1225,12 @@ async function installFromGitHub(app, logEl, btn) {
   }
   btn.disabled = true;
   // Use Google Drive direct download URL if driveId available
-  const downloadUrl = app.driveId
-    ? `https://www.googleapis.com/drive/v3/files/${app.driveId}?alt=media&key=${GDRIVE_API_KEY}`
-    : GITHUB_RAW + encodeURIComponent(app.filename);
-  setLog(logEl, `⟳ Downloading ${app.filename} from ${app.driveId ? "Google Drive" : "GitHub"}…`, "running");
+  if (!app.driveId) {
+    setLog(logEl, "✗ No Drive ID — refresh the store", "error");
+    btn.disabled = false; return;
+  }
+  const downloadUrl = GDRIVE_DOWNLOAD(app.driveId);
+  setLog(logEl, `⟳ Downloading ${app.filename} from Google Drive…`, "running");
   try {
     const res = await fetch(downloadUrl);
     if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
@@ -1279,12 +1265,7 @@ async function renderStore() {
   if (debug) debug.textContent = `Last updated: ${new Date().toLocaleTimeString()} · ${apps.length} APK(s) found`;
   grid.innerHTML = "";
   if (!apps.length) {
-    grid.innerHTML = `<div style="color:var(--red);font-size:12px;padding:12px 0;line-height:1.8;">⚠ Could not load APKs.<br/>Make sure <code style="color:var(--accent)">apks.json</code> exists in your GitHub repo.<br/><span style="color:var(--muted);">See the format below ↓</span></div>
-      <div class="cmd-block" style="margin-top:8px;">[
-  "AppManager_v4.0.5.apk",
-  "GBox-1.5.6.0-150600-16538-telegram.apk",
-  "YourNewApp.apk"
-]</div>`;
+    grid.innerHTML = `<div style="color:var(--red);font-size:12px;padding:12px 0;line-height:1.8;">⚠ Could not load APKs from Google Drive.<br/><span style="color:var(--muted);">Make sure your Drive folder is public and contains .apk files.</span></div>`;
     if (debug) debug.textContent = `Failed to load — ${new Date().toLocaleTimeString()}`;
     return;
   }
