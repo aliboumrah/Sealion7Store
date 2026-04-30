@@ -948,12 +948,10 @@ let adbReady    = false;
 
 function updateInstallBlocking() {
   const ready = serverReady && adbReady;
-  // Block all store install buttons
   document.querySelectorAll('[id^="store-btn-"]').forEach(btn => {
     btn.disabled = !ready;
     btn.title = ready ? "" : "Waiting for JS server and ADB to be ready";
   });
-  // Block custom APK install button only if no file selected AND not ready
   const customBtn = document.getElementById("install-custom-btn");
   if (customBtn && customBtn._hasFile) customBtn.disabled = !ready;
 }
@@ -962,18 +960,53 @@ async function checkServer() {
   try {
     const res  = await fetch(`${SERVER}/mode`, { signal: AbortSignal.timeout(3000) });
     const data = await res.json();
-    serverDot.className   = "status-dot online";
+    serverDot.className     = "status-dot online";
     serverLabel.textContent = `JS ✓ (${data.mode || "ok"})`;
     serverReady = true;
     return true;
   } catch {
-    serverDot.className      = "status-dot";
-    serverLabel.textContent  = "JS offline";
+    serverDot.className     = "status-dot";
+    serverLabel.textContent = "JS offline";
     serverReady = false;
+    adbDot.className        = "status-dot";
+    adbLabel.textContent    = "ADB unknown";
+    adbReady = false;
     updateInstallBlocking();
     updateTabVisibility();
     return false;
   }
+}
+
+// Check ADB directly via adb devices command through server shell
+async function checkAdbDirect() {
+  try {
+    const res  = await fetch(`${SERVER}/shell`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: "devices", adbCmd: true })
+    });
+    const data = await res.json();
+    // Parse "adb devices" output
+    const lines = (data.output || "").split("\n")
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith("List of") && l.includes("\t"));
+    const connected = lines.filter(l => l.includes("device") && !l.includes("offline"));
+    if (connected.length > 0) {
+      adbDot.className     = "status-dot online";
+      adbLabel.textContent = `ADB ✓ (${connected.length})`;
+      adbReady = true;
+    } else {
+      adbDot.className     = "status-dot warn";
+      adbLabel.textContent = "ADB no device";
+      adbReady = false;
+    }
+  } catch {
+    adbDot.className     = "status-dot";
+    adbLabel.textContent = "ADB unknown";
+    adbReady = false;
+  }
+  updateInstallBlocking();
+  updateTabVisibility();
 }
 
 async function checkAdb(devices) {
@@ -2569,6 +2602,41 @@ document.getElementById("hist-dl-cache-btn").addEventListener("click", async () 
     alert("✗ " + e.message);
   }
 });
+
+// ── Launch Termux via ADB (no server needed) ──
+async function adbLaunchTermux() {
+  const btn = document.getElementById("termux-launch-btn");
+  btn.textContent = "⟳";
+  btn.disabled = true;
+  try {
+    // Step 1: Launch Termux app via ADB intent
+    const launch = await fetch(`${SERVER}/shell`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: "am start -n com.termux/.HomeActivity", serial: deviceSel.value || null })
+    });
+    const lData = await launch.json();
+
+    // Step 2: Run start.sh via Termux RUN_COMMAND intent
+    await new Promise(r => setTimeout(r, 1500)); // wait for Termux to open
+    const startCmd = "am startservice --user 0 " +
+      "-n com.termux/.app.RunCommandService " +
+      "-a com.termux.RUN_COMMAND " +
+      "--es com.termux.RUN_COMMAND_PATH '/data/data/com.termux/files/usr/bin/bash' " +
+      "--esa com.termux.RUN_COMMAND_ARGUMENTS '-c,curl -s https://raw.githubusercontent.com/aliboumrah/Sealion7Store/main/start.sh -o ~/start.sh && bash ~/start.sh' " +
+      "--ez com.termux.RUN_COMMAND_BACKGROUND 'true'";
+    await fetch(`${SERVER}/shell`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: startCmd, serial: deviceSel.value || null })
+    });
+    btn.textContent = "✓";
+    setTimeout(() => { btn.textContent = "📟 Termux"; btn.disabled = false; }, 2000);
+  } catch(e) {
+    btn.textContent = "✗";
+    setTimeout(() => { btn.textContent = "📟 Termux"; btn.disabled = false; }, 2000);
+  }
+}
 
 // ── Init ──
 serverUrlInput.value = SERVER;
