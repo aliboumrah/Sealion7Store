@@ -34,6 +34,8 @@ const ABRP_CLIENT_ID  = "SEALION 7 PILOT";
 const ABRP_TOKEN_FILE = path.join(__dirname, "abrp_token.json");
 let ABRP_TOKEN = "";
 let ABRP_USER  = null;
+let ABRP_OAUTH_STATE = null;
+let ABRP_OAUTH_REDIRECT_URI = null;
 
 function loadAbrpToken() {
   try {
@@ -89,6 +91,9 @@ function buildAbrpAuthUrl(req) {
   const redirectUri = getPublicBaseUrl(req) + "/oauth/callback";
   const state = Date.now().toString(36) + Math.random().toString(36).slice(2);
   const scope = "get_telemetry set_telemetry get_plan";
+  ABRP_OAUTH_STATE = state;
+  ABRP_OAUTH_REDIRECT_URI = redirectUri;
+  console.log("ABRP OAuth start", { client_id: ABRP_CLIENT_ID, redirect_uri: redirectUri, state });
   return "https://abetterrouteplanner.com/oauth/auth" +
     "?client_id=" + encodeURIComponent(ABRP_CLIENT_ID) +
     "&scope=" + encodeURIComponent(scope) +
@@ -744,7 +749,16 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     try {
-      const tokenUrl = "https://api.iternio.com/1/oauth/token?client_id=" + encodeURIComponent(ABRP_CLIENT_ID) + "&code=" + encodeURIComponent(code);
+      const returnedState = parsed.query.state || "";
+      const redirectUri = ABRP_OAUTH_REDIRECT_URI || (getPublicBaseUrl(req) + "/oauth/callback");
+      if (ABRP_OAUTH_STATE && returnedState && returnedState !== ABRP_OAUTH_STATE) {
+        throw new Error("OAuth state mismatch. Please start login again from Settings.");
+      }
+      const tokenUrl = "https://api.iternio.com/1/oauth/token" +
+        "?client_id=" + encodeURIComponent(ABRP_CLIENT_ID) +
+        "&code=" + encodeURIComponent(code) +
+        "&redirect_uri=" + encodeURIComponent(redirectUri);
+      console.log("ABRP OAuth callback", { has_code: !!code, state: returnedState, redirect_uri: redirectUri });
       const data = await httpsJsonGet(tokenUrl);
       if (!data.access_token) throw new Error(JSON.stringify(data));
       saveAbrpToken(data.access_token);
