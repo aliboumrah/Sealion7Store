@@ -2322,12 +2322,10 @@ function navRender(places, query) {
 
       function openAbrp(startLat, startLon) {
         var destinations = startLat !== null
-          // With current position: start → destination
           ? JSON.stringify([
               {"address": "Current Location", "lat": startLat, "lon": startLon},
               {"address": name, "lat": lat, "lon": lon}
             ])
-          // Without position: just destination
           : JSON.stringify([{"address": name, "lat": lat, "lon": lon}]);
 
         var params = new URLSearchParams({
@@ -2339,9 +2337,14 @@ function navRender(places, query) {
           allow_ferry:    "true",
           allow_border:   "true",
         });
+
+        // Add token so plan syncs to mobile app (same ABRP account)
+        var token = localStorage.getItem("abrpToken");
+        if (token) params.set("token", token);
+
         navStatus("✓ Opening ABRP → " + name, "var(--green)");
         setTimeout(function() {
-          window.location.href = "https://abetterrouteplanner.com/?" + params.toString();
+          window.open("https://abetterrouteplanner.com/?" + params.toString(), "_blank");
         }, 500);
       }
 
