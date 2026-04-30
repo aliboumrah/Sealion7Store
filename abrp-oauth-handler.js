@@ -1,26 +1,36 @@
 /**
- * ABRP OAuth Handler - GUARANTEED TO WORK
+ * ABRP OAuth Handler - FULLY FIXED
  * 
- * This runs BEFORE everything else and handles the redirect from ABRP
- * Insert this code in your HTML <head> BEFORE other scripts
+ * Fixes:
+ * 1. Wait for DOM before accessing document
+ * 2. Use backend for OAuth exchange (not direct ABRP call)
+ * 3. Handle all error cases
+ * 4. Prevent tab switching
+ * 5. Proper error handling and logging
  */
 
 console.log('🔐 ABRP OAuth Handler - Starting...');
 
-// Make sure this runs immediately
+// Ensure this runs in correct context
 (function() {
   'use strict';
   
   console.log('🔐 ABRP OAuth Handler loaded');
   
   // ============================================================================
+  // Configuration
+  // ============================================================================
+  
+  // Change this to your actual backend URL
+  const BACKEND_URL = 'http://192.168.1.15:3000';
+  
+  // ============================================================================
   // Step 1: Check if we're returning from ABRP with a code
   // ============================================================================
   
   window.getOAuthCode = function() {
-    // Try URL parameters in order: ?code, #code, hash variation
     const url = window.location.href;
-    console.log('🔍 Checking URL for OAuth code:', url);
+    console.log('🔍 Checking URL for OAuth code');
     
     // Method 1: Query string
     const searchParams = new URLSearchParams(window.location.search);
@@ -51,47 +61,43 @@ console.log('🔐 ABRP OAuth Handler - Starting...');
   };
   
   // ============================================================================
-  // Step 2: Exchange code for token with ABRP
+  // Step 2: Exchange code for token WITH BACKEND (not direct ABRP)
   // ============================================================================
   
-  window.exchangeCodeWithABRP = async function(code) {
-    console.log('🔄 Exchanging OAuth code with ABRP servers...');
+  window.exchangeCodeWithBackend = async function(code) {
+    console.log('🔄 Exchanging OAuth code with BACKEND...');
     
     try {
-      // Build form data (ABRP requires POST with form data)
-      const formData = new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code,
-        client_id: 'SEALION 7 PILOT',
-        redirect_uri: 'https://aliboumrah.github.io/Sealion7Store/'
-      });
-      
-      console.log('📡 Calling ABRP token endpoint...');
-      
-      // Call ABRP's OAuth token endpoint
-      const response = await fetch('https://api.iternio.com/1/oauth/token', {
-        method: 'POST',
+      // Call YOUR BACKEND to exchange code
+      // Backend will call ABRP's OAuth endpoint
+      const response = await fetch(BACKEND_URL + '/abrp-oauth-token?code=' + encodeURIComponent(code), {
+        method: 'GET',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json'
-        },
-        body: formData.toString()
+        }
       });
+      
+      console.log('📡 Backend response status:', response.status);
+      
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('Backend error response:', text.substring(0, 200));
+        throw new Error('Backend returned ' + response.status + ': ' + text.substring(0, 100));
+      }
       
       const data = await response.json();
       
-      console.log('Response status:', response.status);
       console.log('Response data:', JSON.stringify(data).substring(0, 100));
       
       if (data.error) {
-        throw new Error(`ABRP Error: ${data.error} - ${data.error_description || ''}`);
+        throw new Error(`Backend Error: ${data.error} - ${data.message || ''}`);
       }
       
       if (!data.access_token) {
-        throw new Error('No access_token in ABRP response: ' + JSON.stringify(data));
+        throw new Error('No access_token in backend response: ' + JSON.stringify(data));
       }
       
-      console.log('✅ Successfully got access token from ABRP');
+      console.log('✅ Successfully got access token from backend');
       return data;
       
     } catch (error) {
@@ -101,13 +107,12 @@ console.log('🔐 ABRP OAuth Handler - Starting...');
   };
   
   // ============================================================================
-  // Step 3: Save token and notify backend
+  // Step 3: Save token
   // ============================================================================
   
   window.saveToken = function(tokenData) {
     console.log('💾 Saving token to localStorage...');
     
-    // Save to localStorage
     const tokenInfo = {
       access_token: tokenData.access_token,
       token_type: tokenData.token_type || 'Bearer',
@@ -120,65 +125,17 @@ console.log('🔐 ABRP OAuth Handler - Starting...');
     localStorage.setItem('abrpOAuthStatus', 'connected');
     
     console.log('✅ Token saved to localStorage');
-    console.log('   Access token:', tokenData.access_token.substring(0, 20) + '...');
     
-    // Also try to fetch and save user info
-    fetchUserInfo(tokenData.access_token);
-  };
-  
-  // ============================================================================
-  // Step 4: Get user info from ABRP
-  // ============================================================================
-  
-  window.fetchUserInfo = async function(accessToken) {
-    try {
-      console.log('🔎 Fetching user info from ABRP...');
-      
-      const response = await fetch(
-        'https://api.iternio.com/1/oauth/me?access_token=' + encodeURIComponent(accessToken),
-        {
-          headers: { 'Accept': 'application/json' }
-        }
-      );
-      
-      const userInfo = await response.json();
-      
-      if (userInfo.error) {
-        console.warn('⚠️ Could not fetch user info:', userInfo.error);
-        return;
-      }
-      
-      console.log('✅ Got user info:', userInfo.full_name);
-      localStorage.setItem('abrpUser', JSON.stringify(userInfo));
-      
-    } catch (error) {
-      console.warn('⚠️ Error fetching user info:', error.message);
+    // Save user info if available
+    if (tokenData.user) {
+      localStorage.setItem('abrpUser', JSON.stringify(tokenData.user));
+      console.log('✅ User info saved:', tokenData.user.full_name);
     }
   };
   
   // ============================================================================
-  // Step 5: Notify backend and clean URL
+  // Step 4: Clean URL
   // ============================================================================
-  
-  window.notifyBackend = function(token) {
-    console.log('📤 Notifying backend about token...');
-    
-    // Tell backend about the token (so it can use it for telemetry)
-    fetch('http://192.168.1.20:3000/abrp-token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ token: token })
-    })
-      .then(r => r.json())
-      .then(data => {
-        console.log('✅ Backend confirmed token:', data);
-      })
-      .catch(e => {
-        console.warn('⚠️ Backend notification failed (this is OK if backend is offline):', e.message);
-      });
-  };
   
   window.cleanURL = function() {
     console.log('🧹 Cleaning OAuth code from URL...');
@@ -186,105 +143,112 @@ console.log('🔐 ABRP OAuth Handler - Starting...');
   };
   
   // ============================================================================
-  // Step 6: Main handler - run if we have a code
+  // Step 5: Main handler
   // ============================================================================
   
   window.handleOAuthRedirect = async function() {
     const code = window.getOAuthCode();
     
     if (!code) {
-      console.log('ℹ️ No OAuth code in URL (normal on first visit)');
-      return;
+      console.log('ℹ️ No OAuth code in URL');
+      return false;
     }
+    
+    // Prevent running twice
+    if (localStorage.getItem('abrpOAuthProcessing')) {
+      console.log('⏳ OAuth already processing, skipping...');
+      return false;
+    }
+    
+    localStorage.setItem('abrpOAuthProcessing', '1');
     
     console.log('🚀 ABRP OAuth redirect detected! Starting token exchange...');
     
     try {
-      // Step 1: Exchange code with ABRP
-      const tokenData = await window.exchangeCodeWithABRP(code);
+      // Exchange with backend
+      const tokenData = await window.exchangeCodeWithBackend(code);
       
-      // Step 2: Save token locally
+      // Save token
       window.saveToken(tokenData);
       
-      // Step 3: Notify backend (optional)
-      window.notifyBackend(tokenData.access_token);
-      
-      // Step 4: Clean URL
+      // Clean URL
       window.cleanURL();
       
-      // Step 5: Show success (wait a moment then reload to show updated UI)
+      // Success!
       console.log('✅✅✅ ABRP OAuth COMPLETE! ✅✅✅');
-      console.log('Token is saved. Reloading page to show connected status...');
       
+      localStorage.removeItem('abrpOAuthProcessing');
+      
+      // Reload to show updated UI
       setTimeout(() => {
-        // Save the current tab before reload so it stays on Settings
-        try {
-          localStorage.setItem('activeTab', 'settings');
-        } catch(e) {}
-        
         window.location.reload();
       }, 1500);
+      
+      return true;
       
     } catch (error) {
       console.error('❌❌❌ ABRP OAuth FAILED ❌❌❌');
       console.error('Error:', error.message);
       
-      // Save error to localStorage so UI can show it
       localStorage.setItem('abrpOAuthError', error.message);
       localStorage.setItem('abrpOAuthStatus', 'failed');
+      localStorage.removeItem('abrpOAuthProcessing');
       
-      // Don't reload, let user see the error
+      return false;
     }
   };
   
   // ============================================================================
-  // Auto-run on page load
+  // Auto-run - wait for DOM first
   // ============================================================================
   
-  // Run immediately if DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      console.log('🔄 DOMContentLoaded - running OAuth handler');
-      window.handleOAuthRedirect();
-    });
-  } else {
-    console.log('🔄 DOM already loaded - running OAuth handler immediately');
+  function runHandler() {
+    console.log('🔄 Running OAuth handler check...');
     window.handleOAuthRedirect();
   }
   
-  // Also export for manual testing
-  window.debugABRPOAuth = {
-    getCode: window.getOAuthCode,
-    exchange: window.exchangeCodeWithABRP,
-    handleRedirect: window.handleOAuthRedirect,
-    saveToken: window.saveToken,
-    fetchUserInfo: window.fetchUserInfo,
-    notifyBackend: window.notifyBackend,
-    cleanURL: window.cleanURL
-  };
-  
-  console.log('✅ ABRP OAuth Handler fully initialized');
-  console.log('📊 Debug available at: window.debugABRPOAuth');
+  // Wait for DOM to be ready
+  if (document.readyState === 'loading') {
+    console.log('⏳ Waiting for DOMContentLoaded...');
+    document.addEventListener('DOMContentLoaded', runHandler);
+  } else {
+    console.log('✅ DOM already loaded, running handler');
+    runHandler();
+  }
   
   // ============================================================================
-  // CRITICAL: Handle tab switching - run handler when tab becomes visible
+  // Handle tab visibility changes
   // ============================================================================
   
-  // Listen for tab becoming visible (user switched back to this tab)
-  document.addEventListener('visibilitychange', function() {
-    if (!document.hidden) {
-      console.log('👁️ Tab became visible - checking for OAuth code...');
-      setTimeout(() => window.handleOAuthRedirect(), 100);
+  // Only add these listeners AFTER dom is ready
+  function addEventListeners() {
+    if (!document) {
+      console.warn('⚠️ Document not ready yet');
+      setTimeout(addEventListeners, 100);
+      return;
     }
-  });
+    
+    try {
+      document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) {
+          console.log('👁️ Tab became visible - checking for OAuth code...');
+          setTimeout(() => window.handleOAuthRedirect(), 100);
+        }
+      });
+      console.log('✅ Visibility listener added');
+    } catch (e) {
+      console.warn('⚠️ Could not add visibility listener:', e.message);
+    }
+  }
   
-  // Listen for window focus (user clicked on this window)
-  window.addEventListener('focus', function() {
-    console.log('🎯 Window focused - checking for OAuth code...');
-    setTimeout(() => window.handleOAuthRedirect(), 100);
-  });
+  // Add listeners when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', addEventListeners);
+  } else {
+    addEventListeners();
+  }
   
-  // Periodic check - in case OAuth happens while tab is hidden
+  // Periodic check
   setInterval(function() {
     const code = window.getOAuthCode();
     const isProcessing = localStorage.getItem('abrpOAuthProcessing');
@@ -294,37 +258,55 @@ console.log('🔐 ABRP OAuth Handler - Starting...');
       console.log('⏰ Periodic check found unprocessed code - handling...');
       window.handleOAuthRedirect();
     }
-  }, 2000); // Check every 2 seconds
+  }, 2000);
+  
+  // Export debug functions
+  window.debugABRPOAuth = {
+    getCode: window.getOAuthCode,
+    exchangeWithBackend: window.exchangeCodeWithBackend,
+    handleRedirect: window.handleOAuthRedirect,
+    saveToken: window.saveToken,
+    cleanURL: window.cleanURL,
+    backendUrl: BACKEND_URL
+  };
+  
+  console.log('✅ ABRP OAuth Handler fully initialized');
+  console.log('📊 Backend URL:', BACKEND_URL);
+  console.log('📊 Debug available at: window.debugABRPOAuth');
   
 })();
 
 /**
- * Debug in browser console:
+ * Debug in browser console (F12):
  * 
- * // Check if code was found in URL
+ * // Check code
  * window.getOAuthCode()
  * 
- * // Check token (should have access_token field)
+ * // Check token
  * localStorage.getItem('abrpToken')
  * 
- * // Check for errors
+ * // Check error
  * localStorage.getItem('abrpOAuthError')
  * 
- * // Check connection status
+ * // Check status
  * localStorage.getItem('abrpOAuthStatus')
  * 
- * // Manually trigger OAuth handler
- * window.handleOAuthRedirect()
- * 
- * // If stuck, reset processing flag
+ * // Manually run handler
  * localStorage.removeItem('abrpOAuthProcessing');
  * window.handleOAuthRedirect();
  * 
- * // Check all ABRP data
+ * // Check backend is reachable
+ * fetch('http://192.168.1.15:3000/abrp/status')
+ *   .then(r => r.json())
+ *   .then(d => console.log(d));
+ * 
+ * // Check all data
  * console.log({
+ *   code: window.getOAuthCode(),
  *   token: localStorage.getItem('abrpToken'),
  *   user: localStorage.getItem('abrpUser'),
  *   status: localStorage.getItem('abrpOAuthStatus'),
- *   error: localStorage.getItem('abrpOAuthError')
+ *   error: localStorage.getItem('abrpOAuthError'),
+ *   backend: window.debugABRPOAuth.backendUrl
  * });
  */
