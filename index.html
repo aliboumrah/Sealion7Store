@@ -898,19 +898,19 @@ body.history-active #metrics-panel { display:flex; }
     <div class="panel-title">Metrics</div>
     <div id="history-list" style="display:none"></div>
     <div id="hist-metric-list" style="overflow-y:auto;flex:1;padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:11px;color:var(--text);">
-      <label class="hist-metric-item"><input type="checkbox" value="0x21604402" checked> 🔋 SOC %</label>
-      <label class="hist-metric-item"><input type="checkbox" value="0x21604421"> ⚡ EV kWh</label>
-      <label class="hist-metric-item"><input type="checkbox" value="0x21604601"> 🚗 Speed km/h</label>
-      <label class="hist-metric-item"><input type="checkbox" value="0x21404401"> 📍 EV Range km</label>
-      <label class="hist-metric-item"><input type="checkbox" value="0x21604409"> 🛣 Odometer km</label>
-      <label class="hist-metric-item"><input type="checkbox" value="0x21404604"> 🌡 Ext Temp °C</label>
-      <label class="hist-metric-item"><input type="checkbox" value="0x21603408"> 🔌 Charge Power W</label>
-      <label class="hist-metric-item"><input type="checkbox" value="0x21601421"> 📊 Last 50km kWh/km</label>
-      <label class="hist-metric-item"><input type="checkbox" value="0x21604405"> 📈 Avg Consump kWh</label>
-      <label class="hist-metric-item"><input type="checkbox" value="0x2160801d"> 🔵 Tyre FL psi</label>
-      <label class="hist-metric-item"><input type="checkbox" value="0x2160801e"> 🔵 Tyre FR psi</label>
-      <label class="hist-metric-item"><input type="checkbox" value="0x2160801f"> 🔵 Tyre RL psi</label>
-      <label class="hist-metric-item"><input type="checkbox" value="0x21608020"> 🔵 Tyre RR psi</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x21604402" checked> 🔋 SOC %</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x21604421"> ⚡ EV kWh</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x21604601"> 🚗 Speed km/h</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x21404401"> 📍 EV Range km</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x21604409"> 🛣 Odometer km</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x21404604"> 🌡 Ext Temp °C</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x21603408"> 🔌 Charge Power W</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x21601421"> 📊 Last 50km kWh/km</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x21604405"> 📈 Avg Consump kWh</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x2160801d"> 🔵 Tyre FL psi</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x2160801e"> 🔵 Tyre FR psi</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x2160801f"> 🔵 Tyre RL psi</label>
+      <label class="hist-metric-item"><input type="checkbox" onchange="updateHistoryAfterMetricChange()" onclick="setTimeout(updateHistoryAfterMetricChange,0)" value="0x21608020"> 🔵 Tyre RR psi</label>
     </div>
     <div style="border-top:1px solid var(--border2);padding:10px 12px;display:flex;gap:6px;flex-wrap:wrap;">
       <button class="hdr-btn" id="hist-select-all-btn" style="font-size:10px;padding:4px 8px;">All</button>
@@ -2668,37 +2668,47 @@ function renderHistChart() {
 
 document.getElementById("hist-refresh-btn").addEventListener("click", loadHistory);
 
+function forceRenderHistChart() {
+  // Checkbox state is sometimes committed after the click event on Android/Chromium.
+  // Render on the next frames so the chart uses the final selected metrics immediately.
+  requestAnimationFrame(() => {
+    renderHistChart();
+    setTimeout(renderHistChart, 60);
+  });
+}
+
 function updateHistoryAfterMetricChange() {
   if (!histData || histData.length === 0) {
-    loadHistory();
+    loadHistory().then(() => forceRenderHistChart());
     return;
   }
-  renderHistChart();
+  forceRenderHistChart();
 }
 
 const histMetricList = document.getElementById("hist-metric-list");
 if (histMetricList) {
-  histMetricList.addEventListener("change", updateHistoryAfterMetricChange);
-  histMetricList.addEventListener("click", (e) => {
-    if (e.target && e.target.matches('input[type="checkbox"]')) {
-      setTimeout(updateHistoryAfterMetricChange, 0);
-    }
+  ["change", "input", "click", "pointerup", "touchend"].forEach(evt => {
+    histMetricList.addEventListener(evt, (e) => {
+      const isMetricClick = e.target?.matches?.('input[type="checkbox"]') ||
+                            e.target?.closest?.('.hist-metric-item');
+      if (isMetricClick) updateHistoryAfterMetricChange();
+    }, true);
   });
 }
 
 document.getElementById("hist-select-all-btn").addEventListener("click", () => {
   document.querySelectorAll('#hist-metric-list input[type="checkbox"]').forEach(b => b.checked = true);
-  updateHistoryAfterMetricChange();
+  forceRenderHistChart();
 });
 
 document.getElementById("hist-clear-metrics-btn").addEventListener("click", () => {
   document.querySelectorAll('#hist-metric-list input[type="checkbox"]').forEach(b => b.checked = false);
-  updateHistoryAfterMetricChange();
+  forceRenderHistChart();
 });
 
-document.getElementById("hist-time-filter").addEventListener("change", () => { updateHistoryCustomInputs(); renderHistChart(); });
-document.getElementById("hist-from").addEventListener("change", renderHistChart);
-document.getElementById("hist-to").addEventListener("change", renderHistChart);
+document.getElementById("hist-time-filter").addEventListener("change", () => { updateHistoryCustomInputs(); forceRenderHistChart(); });
+document.getElementById("hist-from").addEventListener("change", forceRenderHistChart);
+document.getElementById("hist-to").addEventListener("change", forceRenderHistChart);
 window.addEventListener("resize", () => { if (histData.length) renderHistChart(); });
 
 function downloadJson(data, filename) {
