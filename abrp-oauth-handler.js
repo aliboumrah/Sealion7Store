@@ -5,6 +5,9 @@
  * Insert this code in your HTML <head> BEFORE other scripts
  */
 
+console.log('🔐 ABRP OAuth Handler - Starting...');
+
+// Make sure this runs immediately
 (function() {
   'use strict';
   
@@ -14,7 +17,7 @@
   // Step 1: Check if we're returning from ABRP with a code
   // ============================================================================
   
-  function getOAuthCode() {
+  window.getOAuthCode = function() {
     // Try URL parameters in order: ?code, #code, hash variation
     const url = window.location.href;
     console.log('🔍 Checking URL for OAuth code:', url);
@@ -45,13 +48,13 @@
     
     console.log('❌ No code found in URL');
     return null;
-  }
+  };
   
   // ============================================================================
   // Step 2: Exchange code for token with ABRP
   // ============================================================================
   
-  async function exchangeCodeWithABRP(code) {
+  window.exchangeCodeWithABRP = async function(code) {
     console.log('🔄 Exchanging OAuth code with ABRP servers...');
     
     try {
@@ -95,13 +98,13 @@
       console.error('❌ OAuth exchange failed:', error.message);
       throw error;
     }
-  }
+  };
   
   // ============================================================================
   // Step 3: Save token and notify backend
   // ============================================================================
   
-  function saveToken(tokenData) {
+  window.saveToken = function(tokenData) {
     console.log('💾 Saving token to localStorage...');
     
     // Save to localStorage
@@ -121,13 +124,13 @@
     
     // Also try to fetch and save user info
     fetchUserInfo(tokenData.access_token);
-  }
+  };
   
   // ============================================================================
   // Step 4: Get user info from ABRP
   // ============================================================================
   
-  async function fetchUserInfo(accessToken) {
+  window.fetchUserInfo = async function(accessToken) {
     try {
       console.log('🔎 Fetching user info from ABRP...');
       
@@ -151,13 +154,13 @@
     } catch (error) {
       console.warn('⚠️ Error fetching user info:', error.message);
     }
-  }
+  };
   
   // ============================================================================
   // Step 5: Notify backend and clean URL
   // ============================================================================
   
-  function notifyBackend(token) {
+  window.notifyBackend = function(token) {
     console.log('📤 Notifying backend about token...');
     
     // Tell backend about the token (so it can use it for telemetry)
@@ -175,19 +178,19 @@
       .catch(e => {
         console.warn('⚠️ Backend notification failed (this is OK if backend is offline):', e.message);
       });
-  }
+  };
   
-  function cleanURL() {
+  window.cleanURL = function() {
     console.log('🧹 Cleaning OAuth code from URL...');
     window.history.replaceState({}, document.title, window.location.pathname);
-  }
+  };
   
   // ============================================================================
   // Step 6: Main handler - run if we have a code
   // ============================================================================
   
-  async function handleOAuthRedirect() {
-    const code = getOAuthCode();
+  window.handleOAuthRedirect = async function() {
+    const code = window.getOAuthCode();
     
     if (!code) {
       console.log('ℹ️ No OAuth code in URL (normal on first visit)');
@@ -198,16 +201,16 @@
     
     try {
       // Step 1: Exchange code with ABRP
-      const tokenData = await exchangeCodeWithABRP(code);
+      const tokenData = await window.exchangeCodeWithABRP(code);
       
       // Step 2: Save token locally
-      saveToken(tokenData);
+      window.saveToken(tokenData);
       
       // Step 3: Notify backend (optional)
-      notifyBackend(tokenData.access_token);
+      window.notifyBackend(tokenData.access_token);
       
       // Step 4: Clean URL
-      cleanURL();
+      window.cleanURL();
       
       // Step 5: Show success (wait a moment then reload to show updated UI)
       console.log('✅✅✅ ABRP OAuth COMPLETE! ✅✅✅');
@@ -227,7 +230,7 @@
       
       // Don't reload, let user see the error
     }
-  }
+  };
   
   // ============================================================================
   // Auto-run on page load
@@ -235,17 +238,28 @@
   
   // Run immediately if DOM is ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', handleOAuthRedirect);
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('🔄 DOMContentLoaded - running OAuth handler');
+      window.handleOAuthRedirect();
+    });
   } else {
-    handleOAuthRedirect();
+    console.log('🔄 DOM already loaded - running OAuth handler immediately');
+    window.handleOAuthRedirect();
   }
   
   // Also export for manual testing
   window.debugABRPOAuth = {
-    getCode: getOAuthCode,
-    exchange: exchangeCodeWithABRP,
-    handleRedirect: handleOAuthRedirect
+    getCode: window.getOAuthCode,
+    exchange: window.exchangeCodeWithABRP,
+    handleRedirect: window.handleOAuthRedirect,
+    saveToken: window.saveToken,
+    fetchUserInfo: window.fetchUserInfo,
+    notifyBackend: window.notifyBackend,
+    cleanURL: window.cleanURL
   };
+  
+  console.log('✅ ABRP OAuth Handler fully initialized');
+  console.log('📊 Debug available at: window.debugABRPOAuth');
   
 })();
 
@@ -253,7 +267,7 @@
  * Debug in browser console:
  * 
  * // Check if code was found
- * window.debugABRPOAuth.getCode()
+ * window.getOAuthCode()
  * 
  * // Check token
  * localStorage.getItem('abrpToken')
@@ -263,4 +277,7 @@
  * 
  * // Check status
  * localStorage.getItem('abrpOAuthStatus')
+ * 
+ * // Manually trigger handler
+ * window.handleOAuthRedirect()
  */
